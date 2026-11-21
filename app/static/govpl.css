@@ -1,0 +1,219 @@
+/* Design System Rzeczypospolitej Polskiej & Portal dane.gov.pl Theme */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap');
+
+:root {
+    --gov-blue: #0052a5;
+    --gov-blue-dark: #003d7a;
+    --gov-blue-light: #e8f0fe;
+    
+    --gov-red: #d60424;
+    --gov-red-dark: #b3031e;
+    
+    --gov-bg: #f4f6f9;
+    --gov-card-bg: #ffffff;
+    --gov-border: #d0d5dd;
+    --gov-border-light: #e4e7ec;
+    
+    --gov-text: #1d2939;
+    --gov-text-secondary: #475467;
+    --gov-text-muted: #667085;
+    
+    --gov-green: #087443;
+    --gov-green-bg: #ecfdf3;
+    --gov-amber: #b54708;
+    --gov-amber-bg: #fffaeb;
+}
+
+body {
+    background-color: var(--gov-bg);
+    color: var(--gov-text);
+    font-family: 'Inter', 'Source Sans 3', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    letter-spacing: -0.01em;
+    -webkit-font-smoothing: antialiased;
+}
+
+.font-gov {
+    font-family: 'Source Sans 3', 'Inter', sans-serif;
+}
+
+.font-mono-gov {
+    font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+}
+
+/* Gov.pl Official Top Bar */
+.gov-topbar {
+    background-color: #ffffff;
+    border-bottom: 1px solid #eaecf0;
+    font-size: 0.75rem;
+    color: #475467;
+}
+
+/* Gov.pl Header Navigation */
+.gov-header {
+    background-color: #ffffff;
+    border-bottom: 2px solid var(--gov-blue);
+    box-shadow: 0 1px 3px rgba(16, 24, 40, 0.05);
+}
+
+.gov-nav-btn {
+    position: relative;
+    padding: 12px 16px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #344054;
+    transition: color 0.15s ease;
+    border-bottom: 3px solid transparent;
+}
+.gov-nav-btn:hover {
+    color: var(--gov-blue);
+}
+.gov-nav-btn.active {
+    color: var(--gov-blue);
+    border-bottom-color: var(--gov-blue);
+}
+
+/* Cards */
+.gov-card {
+    background-color: #ffffff;
+    border: 1px solid var(--gov-border-light);
+    border-radius: 4px;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
+}
+
+.gov-card-header {
+    background-color: #f8fafc;
+    border-bottom: 1px solid var(--gov-border-light);
+    padding: 12px 18px;
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: var(--gov-text);
+}
+
+/* Badges (dane.gov.pl standard) */
+.gov-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+.gov-badge-green {
+    background-color: #ecfdf3;
+    color: #027a48;
+    border: 1px solid #a6f4c5;
+}
+.gov-badge-amber {
+    background-color: #fffaeb;
+    color: #b54708;
+    border: 1px solid #fedf89;
+}
+.gov-badge-red {
+    background-color: #fef3f2;
+    color: #b42318;
+    border: 1px solid #fecdca;
+}
+.gov-badge-blue {
+    background-color: #f0f9ff;
+    color: #026aa2;
+    border: 1px solid #b9e6fe;
+}
+.gov-badge-gray {
+    background-color: #f2f4f7;
+    color: #344054;
+    border: 1px solid #d0d5dd;
+}
+
+/* Gov.pl Buttons */
+.gov-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 9px 18px;
+    border-radius: 4px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    border: 1px solid transparent;
+}
+.gov-btn-primary {
+    background-color: var(--gov-blue);
+    color: #ffffff;
+}
+.gov-btn-primary:hover:not(:disabled) {
+    background-color: var(--gov-blue-dark);
+}
+.gov-btn-secondary {
+    background-color: #ffffff;
+    color: var(--gov-blue);
+    border-color: var(--gov-blue);
+}
+.gov-btn-secondary:hover:not(:disabled) {
+    background-color: #f0f7ff;
+}
+.gov-btn-danger {
+    background-color: var(--gov-red);
+    color: #ffffff;
+}
+.gov-btn-danger:hover:not(:disabled) {
+    background-color: var(--gov-red-dark);
+}
+
+/* Form Inputs */
+.gov-input {
+    background-color: #ffffff;
+    border: 1px solid #d0d5dd;
+    color: var(--gov-text);
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-size: 0.875rem;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.gov-input:focus {
+    outline: none;
+    border-color: var(--gov-blue);
+    box-shadow: 0 0 0 3px rgba(0, 82, 165, 0.15);
+}
+
+/* Leaflet Container & Cluster Gov styling */
+.leaflet-container {
+    background-color: #f4f6f9 !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 100% !important;
+    font-family: 'Inter', sans-serif !important;
+}
+
+.leaflet-popup-content-wrapper {
+    background-color: #ffffff !important;
+    color: #1d2939 !important;
+    border: 1px solid #d0d5dd !important;
+    border-radius: 4px !important;
+    box-shadow: 0 8px 20px rgba(16, 24, 40, 0.12) !important;
+}
+.leaflet-popup-tip {
+    background-color: #ffffff !important;
+    border: 1px solid #d0d5dd !important;
+}
+
+/* Clean Gov Marker Clusters */
+.marker-cluster-small,
+.marker-cluster-medium,
+.marker-cluster-large {
+    background-color: rgba(0, 82, 165, 0.2) !important;
+    border: 2px solid #0052a5 !important;
+    border-radius: 50% !important;
+}
+.marker-cluster-small div,
+.marker-cluster-medium div,
+.marker-cluster-large div {
+    background-color: #0052a5 !important;
+    color: #ffffff !important;
+    font-family: 'Inter', sans-serif !important;
+    font-weight: 700 !important;
+    font-size: 12px !important;
+    border-radius: 50% !important;
+}

@@ -1,0 +1,1549 @@
+<!DOCTYPE html>
+<html lang="pl" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Otwórz AED – mapa defibrylatorów i otwarte dane AED</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        gov: {
+                            blue: '#00875A',
+                            blueDark: '#006644',
+                            blueLight: '#E6F4EE',
+                            red: '#C4262E',
+                            bg: '#F5F7F6',
+                            card: '#ffffff',
+                            border: '#D5DED9',
+                            text: '#14201B',
+                            muted: '#4A5A53'
+                        },
+                        brand: { DEFAULT: '#00875A', dark: '#006644', tint: '#E6F4EE', ink: '#14201B' }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Identyfikacja akcji Otwórz AED -->
+    <link rel="stylesheet" href="/static/brand.css" />
+    
+    <!-- Leaflet & MarkerCluster -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+
+    <!-- React 18 & Babel Standalone -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+</head>
+<body class="h-full flex flex-col bg-[#F5F7F6] text-[#14201B] font-sans antialiased">
+    <div id="root" class="h-full flex flex-col"></div>
+
+    <!-- React Application Script -->
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useMemo } = React;
+
+        // ═══════════════════════════════════════════════════════════════════
+        // MARKA „OTWÓRZ AED” + IKONY
+        // ═══════════════════════════════════════════════════════════════════
+        // Znak: otwarta kłódka, w której korpusie bije linia EKG.
+        const OtworzAedLogo = ({ className = "w-10 h-10" }) => (
+            <svg className={className} viewBox="0 0 48 48" role="img" aria-label="Logo akcji Otwórz AED">
+                <rect width="48" height="48" rx="12" fill="#00875A" />
+                <path d="M16 22v-6.5a8.5 8.5 0 0 1 16.4-3.1" fill="none" stroke="#FFFFFF" strokeWidth="3.6" strokeLinecap="round" />
+                <rect x="10.5" y="21.5" width="27" height="18" rx="4.5" fill="#FFFFFF" />
+                <path d="M13.5 31h6l2.4-5.2 3.4 9.4 2.8-7.2 1.8 3H34.5" fill="none" stroke="#00875A" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+        );
+
+        const OtworzAedWordmark = ({ size = "md" }) => {
+            const logo = size === "lg" ? "w-14 h-14" : size === "sm" ? "w-8 h-8" : "w-10 h-10";
+            const text = size === "lg" ? "text-4xl" : size === "sm" ? "text-lg" : "text-2xl";
+            return (
+                <span className="inline-flex items-center gap-2.5">
+                    <OtworzAedLogo className={`${logo} shrink-0`} />
+                    <span className={`font-display font-extrabold ${text} leading-none tracking-tight text-[#14201B]`}>
+                        Otwórz <span className="text-[#00875A]">AED</span>
+                    </span>
+                </span>
+            );
+        };
+
+        const IconHeartPulse = ({ className = "w-4 h-4" }) => (
+            <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M19.5 12.6 12 20l-7.5-7.4A5 5 0 0 1 12 6a5 5 0 0 1 7.5 6.6Z" />
+                <path d="M3.5 12h4l2-3 3 6 2-3h6" />
+            </svg>
+        );
+
+        const IconSearch = ({ className = "w-4 h-4" }) => (
+            <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+        );
+
+        const IconDownload = ({ className = "w-4 h-4" }) => (
+            <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+        );
+
+        const IconMapPin = ({ className = "w-4 h-4" }) => (
+            <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" />
+                <circle cx="12" cy="10" r="3" />
+            </svg>
+        );
+
+        const IconRadio = ({ className = "w-4 h-4" }) => (
+            <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9m14.2 0c3.9 3.9 3.9 10.3 0 14.2M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5m8.4 0c2.3 2.3 2.3 6.1 0 8.5M12 14a2 2 0 100-4 2 2 0 000 4z" />
+            </svg>
+        );
+
+        const IconFileText = ({ className = "w-4 h-4" }) => (
+            <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="16" y1="13" x2="8" y2="13" />
+                <line x1="16" y1="17" x2="8" y2="17" />
+                <polyline points="10 9 9 9 8 9" />
+            </svg>
+        );
+
+        const IconCheck = ({ className = "w-4 h-4" }) => (
+            <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+            </svg>
+        );
+
+        const IconAlert = ({ className = "w-4 h-4" }) => (
+            <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+        );
+
+        const IconNavigation = ({ className = "w-4 h-4" }) => (
+            <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="3 11 22 2 13 21 11 13 3 11" />
+            </svg>
+        );
+
+        const IconKey = ({ className = "w-4 h-4" }) => (
+            <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 2l-2 2m-1.5 1.5L19 7l-2 2-1.5-1.5L14 9l-1.5-1.5" />
+                <circle cx="7.5" cy="16.5" r="4.5" />
+            </svg>
+        );
+
+        const IconPlus = ({ className = "w-4 h-4" }) => (
+            <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+        );
+
+        const IconPhone = ({ className = "w-4 h-4" }) => (
+            <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z" />
+            </svg>
+        );
+
+        // ═══════════════════════════════════════════════════════════════════
+        // MAIN APP COMPONENT
+        // ═══════════════════════════════════════════════════════════════════
+        function App() {
+            const getInitialTab = () => {
+                const path = window.location.pathname;
+                if (path.includes('dispatcher')) return 'dispatch';
+                if (path.includes('submit')) return 'register';
+                if (path.includes('opendata')) return 'opendata';
+                if (path.includes('mapa')) return 'map';
+                return 'action';
+            };
+
+            const [activeTab, setActiveTab] = useState(getInitialTab);
+            const [stats, setStats] = useState(null);
+            const [selectedAed, setSelectedAed] = useState(null);
+
+            useEffect(() => {
+                fetch('/api/v1/stats')
+                    .then(r => r.json())
+                    .then(data => setStats(data))
+                    .catch(() => {});
+            }, []);
+
+            // Na wąskim ekranie pasek zakładek przewija się – aktywna zawsze ma być widoczna
+            const navRef = useRef(null);
+            useEffect(() => {
+                const active = navRef.current && navRef.current.querySelector('[aria-current="page"]');
+                if (active) active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+            }, [activeTab]);
+
+            // Wstecz/Dalej w przeglądarce przełącza zakładkę zgodnie z adresem
+            useEffect(() => {
+                const onPop = () => setActiveTab(getInitialTab());
+                window.addEventListener('popstate', onPop);
+                return () => window.removeEventListener('popstate', onPop);
+            }, []);
+
+            const switchTab = (tab, path) => {
+                setActiveTab(tab);
+                window.history.pushState(null, '', path);
+            };
+
+            return (
+                <div className="h-full flex flex-col overflow-hidden bg-[#F5F7F6]">
+                    <header className="brand-header px-4 sm:px-8 shrink-0">
+                        <div className="flex items-center justify-between gap-3 pt-3 pb-1">
+                            <a href="/" onClick={(e) => { e.preventDefault(); switchTab('action', '/'); }} className="flex items-center gap-3 min-w-0" aria-label="Otwórz AED – strona akcji">
+                                <OtworzAedWordmark />
+                                <span className="hidden md:block text-xs text-[#4A5A53] border-l border-[#D5DED9] pl-3 leading-snug">
+                                    Twoja minuta.<br />Czyjeś życie.
+                                </span>
+                            </a>
+                            <div className="flex items-center gap-2 text-xs bg-[#E6F4EE] text-[#006644] px-3 py-1.5 rounded-full shrink-0">
+                                <span className="w-2 h-2 rounded-full bg-[#00875A]" aria-hidden="true"></span>
+                                <span className="font-mono font-bold">{stats ? stats.total_aed.toLocaleString('pl-PL') : '—'}</span>
+                                <span className="hidden sm:inline">AED na mapie</span>
+                                <span className="sm:hidden">AED</span>
+                            </div>
+                        </div>
+
+                        <nav className="flex items-center gap-1 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0" aria-label="Sekcje aplikacji" ref={navRef}>
+                            <button
+                                aria-current={activeTab === 'action' ? 'page' : undefined}
+                                onClick={() => switchTab('action', '/')}
+                                className={`gov-nav-btn flex items-center gap-2 ${activeTab === 'action' ? 'active' : ''}`}
+                            >
+                                <IconHeartPulse className="w-4 h-4" />
+                                <span>Akcja</span>
+                            </button>
+                            <button
+                                aria-current={activeTab === 'map' ? 'page' : undefined}
+                                onClick={() => switchTab('map', '/mapa')}
+                                className={`gov-nav-btn flex items-center gap-2 ${activeTab === 'map' ? 'active' : ''}`}
+                            >
+                                <IconMapPin className="w-4 h-4" />
+                                <span>Mapa AED</span>
+                            </button>
+                            <button
+                                aria-current={activeTab === 'dispatch' ? 'page' : undefined}
+                                onClick={() => switchTab('dispatch', '/dispatcher')}
+                                className={`gov-nav-btn nav-112 flex items-center gap-2 ${activeTab === 'dispatch' ? 'active' : ''}`}
+                            >
+                                <IconRadio className="w-4 h-4" />
+                                <span>Dyspozytor 112</span>
+                            </button>
+                            <button
+                                aria-current={activeTab === 'register' ? 'page' : undefined}
+                                onClick={() => switchTab('register', '/submit')}
+                                className={`gov-nav-btn flex items-center gap-2 ${activeTab === 'register' ? 'active' : ''}`}
+                            >
+                                <IconPlus className="w-4 h-4" />
+                                <span>Zgłoś AED</span>
+                            </button>
+                            <button
+                                aria-current={activeTab === 'opendata' ? 'page' : undefined}
+                                onClick={() => switchTab('opendata', '/opendata')}
+                                className={`gov-nav-btn flex items-center gap-2 ${activeTab === 'opendata' ? 'active' : ''}`}
+                            >
+                                <IconFileText className="w-4 h-4" />
+                                <span>Dane otwarte</span>
+                            </button>
+                        </nav>
+                    </header>
+
+                    {/* Main Content Area */}
+                    <main className="flex-1 overflow-hidden relative">
+                        {activeTab === 'action' && <CampaignView stats={stats} onNavigate={switchTab} />}
+                        {activeTab === 'map' && <MapView stats={stats} onSelectAed={setSelectedAed} selectedAed={selectedAed} />}
+                        {activeTab === 'dispatch' && <DispatcherView />}
+                        {activeTab === 'register' && <RegisterView />}
+                        {activeTab === 'opendata' && <OpenDataView stats={stats} />}
+                    </main>
+                </div>
+            );
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // TAB 1: MAP VIEW (REJESTR I MAPA AED)
+        // ═══════════════════════════════════════════════════════════════════
+        function MapView({ stats, onSelectAed, selectedAed }) {
+            const mapRef = useRef(null);
+            const mapInstance = useRef(null);
+            const clusterGroup = useRef(null);
+            const [aeds, setAeds] = useState([]);
+            const [filterStatus, setFilterStatus] = useState('all');
+            const [searchCity, setSearchCity] = useState('');
+            const [loading, setLoading] = useState(true);
+
+            useEffect(() => {
+                if (!mapInstance.current && mapRef.current) {
+                    const map = L.map(mapRef.current, { preferCanvas: true }).setView([52.0693, 19.4803], 6);
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        maxZoom: 19,
+                        attribution: '© OpenStreetMap autorzy'
+                    }).addTo(map);
+
+                    const cluster = L.markerClusterGroup({
+                        maxClusterRadius: 40,
+                        showCoverageOnHover: false
+                    });
+                    map.addLayer(cluster);
+                    clusterGroup.current = cluster;
+                    mapInstance.current = map;
+
+                    setTimeout(() => map.invalidateSize(), 200);
+                    window.addEventListener('resize', () => map.invalidateSize());
+                }
+
+                fetch('/api/v1/aeds')
+                    .then(r => r.json())
+                    .then(data => {
+                        setAeds(data);
+                        setLoading(false);
+                        setTimeout(() => mapInstance.current?.invalidateSize(), 100);
+                    })
+                    .catch(() => setLoading(false));
+            }, []);
+
+            useEffect(() => {
+                if (mapInstance.current) {
+                    setTimeout(() => mapInstance.current.invalidateSize(), 150);
+                }
+            }, [selectedAed]);
+
+            // Filter & Render Markers
+            useEffect(() => {
+                if (!mapInstance.current || !clusterGroup.current || aeds.length === 0) return;
+
+                clusterGroup.current.clearLayers();
+                const markers = [];
+
+                // Pinezki: zielona = dostępny teraz, szara = zamknięty teraz,
+                // bursztynowa = godziny niepotwierdzone, czerwona = AED niesprawny.
+                const pin = (bg, symbol) => L.divIcon({
+                    className: '',
+                    html: `<div style="width:24px;height:24px;background:${bg};border:2px solid #ffffff;border-radius:8px;box-shadow:0 1px 4px rgba(20,32,27,0.35);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:800;">${symbol}</div>`,
+                    iconSize: [24, 24],
+                    iconAnchor: [12, 12]
+                });
+                const iconAvailable = pin('#00875A', '+');
+                const iconClosed = pin('#5B6B64', '+');
+                const iconUnknown = pin('#B54708', '?');
+                const iconDamaged = pin('#C4262E', '✕');
+
+                const q = searchCity.toLowerCase().trim();
+
+                for (let i = 0; i < aeds.length; i++) {
+                    const a = aeds[i];
+                    if (filterStatus === '247' && a.opening_hours !== '24/7') continue;
+                    if (filterStatus === 'active' && a.status !== 'active') continue;
+                    if (filterStatus === 'outdoor' && a.indoor) continue;
+                    if (filterStatus === 'indoor' && !a.indoor) continue;
+
+                    if (q) {
+                        const cityMatch = (a.address_city || '').toLowerCase().includes(q);
+                        const streetMatch = (a.address_street || '').toLowerCase().includes(q);
+                        const locMatch = (a.location_description || '').toLowerCase().includes(q);
+                        if (!cityMatch && !streetMatch && !locMatch) continue;
+                    }
+
+                    let icon = iconAvailable;
+                    if (a.status !== 'active') icon = iconDamaged;
+                    else if (a.hours_status === 'closed') icon = iconClosed;
+                    else if (a.hours_status === 'unknown') icon = iconUnknown;
+
+                    const marker = L.marker([a.latitude, a.longitude], { icon });
+                    marker.on('click', () => onSelectAed(a));
+                    markers.push(marker);
+                }
+
+                clusterGroup.current.addLayers(markers);
+            }, [aeds, filterStatus, searchCity]);
+
+            return (
+                <div className="h-full flex flex-col md:flex-row overflow-hidden relative">
+                    {/* Map Surface */}
+                    <div className="flex-1 h-full relative" ref={mapRef}>
+                        {loading && (
+                            <div className="absolute inset-0 z-[1000] bg-white/85 flex flex-col items-center justify-center text-gray-700">
+                                <div className="w-8 h-8 border-3 border-[#00875A] border-t-transparent rounded-full animate-spin mb-3"></div>
+                                <div className="text-sm font-bold tracking-tight">Ładowanie rejestru publicznego...</div>
+                                <div className="text-xs text-gray-500 mt-1">Trwa wczytywanie 17 835 defibrylatorów AED w Polsce</div>
+                            </div>
+                        )}
+
+                        {/* Filtry i wyszukiwarka mapy */}
+                        <div className="absolute top-3 left-3 right-3 sm:right-auto z-[400] bg-white border border-gray-200 p-2.5 rounded shadow-md flex flex-wrap items-center gap-2 text-xs">
+                            <div className="relative">
+                                <input
+                                    type="text"
+                                    placeholder="Filtruj miasto lub ulicę..."
+                                    value={searchCity}
+                                    onChange={(e) => setSearchCity(e.target.value)}
+                                    className="gov-input py-1.5 pl-7 text-xs w-48 sm:w-56"
+                                />
+                                <IconSearch className="w-3.5 h-3.5 text-gray-400 absolute left-2 top-2.5" />
+                            </div>
+
+                            <span className="text-gray-300">|</span>
+
+                            <div className="flex items-center gap-1">
+                                {[
+                                    { id: 'all', label: 'Wszystkie' },
+                                    { id: '247', label: 'Dostępne 24/7' },
+                                    { id: 'active', label: 'Tylko aktywne' },
+                                    { id: 'outdoor', label: 'Na zewnątrz' },
+                                    { id: 'indoor', label: 'Wewnątrz obiektu' }
+                                ].map(f => (
+                                    <button
+                                        key={f.id}
+                                        onClick={() => setFilterStatus(f.id)}
+                                        className={`px-2.5 py-1 rounded text-[11px] font-semibold transition ${
+                                            filterStatus === f.id
+                                                ? 'bg-[#00875A] text-white'
+                                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                        }`}
+                                    >
+                                        {f.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Karta szczegółów AED */}
+                    {selectedAed && (
+                        <aside className="w-full md:w-[420px] bg-white border-l border-gray-200 flex flex-col z-[500] shadow-xl overflow-y-auto">
+                            <div className="p-4 border-b border-gray-200 flex items-center justify-between bg-gray-50">
+                                <div>
+                                    <span className="text-[10px] font-mono font-bold text-gray-500 uppercase tracking-widest block">KARTA EWIDENCYJNA AED</span>
+                                    <h2 className="font-bold text-base text-gray-900 mt-0.5">{selectedAed.address_street || 'Lokalizacja zarejestrowana'}</h2>
+                                </div>
+                                <button
+                                    onClick={() => onSelectAed(null)}
+                                    className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200"
+                                    aria-label="Zamknij podgląd"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+
+                            <div className="p-4 space-y-4 text-xs">
+                                {/* Badges */}
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <span className={`gov-badge ${selectedAed.status === 'active' ? 'gov-badge-green' : 'gov-badge-red'}`}>
+                                        <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
+                                        Status: {selectedAed.status === 'active' ? 'Sprawny / Aktywny' : selectedAed.status}
+                                    </span>
+                                    <span className="gov-badge gov-badge-blue">
+                                        {selectedAed.indoor ? 'Wewnątrz budynku' : 'Na zewnątrz (wolnostojący)'}
+                                    </span>
+                                    <span className="gov-badge gov-badge-gray">
+                                        Dostęp: {selectedAed.access_type || 'publiczny'}
+                                    </span>
+                                </div>
+
+                                {/* Cabinet Access Code – sam kod nie jest publiczny, podaje go dyspozytor 112 */}
+                                {selectedAed.has_access_code && (
+                                    <div className="bg-[#fffaeb] border border-[#fedf89] rounded p-3 text-[#b54708]">
+                                        <span className="text-[10px] font-bold uppercase tracking-wider block flex items-center gap-1.5">
+                                            <IconKey className="w-3.5 h-3.5" />
+                                            Szafka zamykana na kod
+                                        </span>
+                                        <div className="text-xs mt-1 text-gray-900">
+                                            W nagłym wypadku zadzwoń pod <strong>112</strong> – dyspozytor poda kod do szafki.
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Location Details */}
+                                <div className="space-y-2 border-t border-gray-100 pt-3">
+                                    <div>
+                                        <span className="text-gray-500 text-[11px] font-bold uppercase block">Adres administracyjny:</span>
+                                        <span className="font-semibold text-gray-900 text-sm">
+                                            {selectedAed.address_city} {selectedAed.address_postal_code}, {selectedAed.address_street}
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <span className="text-gray-500 text-[11px] font-bold uppercase block">Rozmieszczenie i wejście:</span>
+                                        <div className="bg-gray-50 border border-gray-200 p-2.5 rounded text-gray-800 mt-1 leading-relaxed">
+                                            {selectedAed.location_description || 'Brak dodatkowego opisu rozmieszczenia w obiekcie.'}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <span className="text-gray-500 text-[11px] font-bold uppercase block">Godziny dostępności:</span>
+                                        <span className="font-mono font-bold text-gray-900 block mt-0.5">
+                                            {selectedAed.opening_hours || '24/7'}
+                                        </span>
+                                        {selectedAed.hours_status && (
+                                            <span className={`gov-badge mt-1.5 ${
+                                                selectedAed.hours_status === 'open' ? 'gov-badge-green'
+                                                : selectedAed.hours_status === 'closed' ? 'gov-badge-red' : 'gov-badge-amber'}`}>
+                                                {selectedAed.hours_status === 'open' ? 'Dostępny teraz'
+                                                    : selectedAed.hours_status === 'closed' ? 'Zamknięty teraz' : 'Godziny niepotwierdzone'}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Technical Details */}
+                                <div className="space-y-1.5 border-t border-gray-100 pt-3 text-[11px]">
+                                    <div className="flex justify-between py-1 border-b border-gray-100">
+                                        <span className="text-gray-500">Koordynaty WGS84:</span>
+                                        <span className="font-mono text-gray-800">{selectedAed.latitude.toFixed(6)}, {selectedAed.longitude.toFixed(6)}</span>
+                                    </div>
+                                    <div className="flex justify-between py-1 border-b border-gray-100">
+                                        <span className="text-gray-500">Podmiot dysponujący:</span>
+                                        <span className="text-gray-800 font-medium">{selectedAed.operator_name || 'Brak danych'}</span>
+                                    </div>
+                                    <div className="flex justify-between py-1 border-b border-gray-100">
+                                        <span className="text-gray-500">Kontakt telefoniczny:</span>
+                                        <span className="font-mono text-gray-800">{selectedAed.operator_phone || '—'}</span>
+                                    </div>
+                                    <div className="flex justify-between py-1 border-b border-gray-100">
+                                        <span className="text-gray-500">Wskaźnik jakości danych:</span>
+                                        <span className="font-bold text-green-700">{selectedAed.quality_score} / 100 pkt</span>
+                                    </div>
+                                    <div className="flex justify-between py-1">
+                                        <span className="text-gray-500">System źródłowy:</span>
+                                        <span className="text-gray-700">{selectedAed.source_name} ({selectedAed.source_id || 'ID rekordu'})</span>
+                                    </div>
+                                </div>
+
+                                {/* Navigation Action */}
+                                <div className="pt-2">
+                                    <a
+                                        href={`https://www.google.com/maps/dir/?api=1&destination=${selectedAed.latitude},${selectedAed.longitude}&travelmode=walking`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="gov-btn gov-btn-primary w-full text-center"
+                                    >
+                                        <IconNavigation className="w-4 h-4" />
+                                        <span>Wyznacz trasę pieszą (Google Maps)</span>
+                                    </a>
+                                </div>
+                            </div>
+                        </aside>
+                    )}
+                </div>
+            );
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // TAB 2: DISPATCHER VIEW (MODUŁ OPERACYJNY DYSPOZYTORA 112)
+        // ═══════════════════════════════════════════════════════════════════
+        // Dane AED pochodzą m.in. z publicznego formularza – przed wstawieniem do HTML
+        // (dymki Leaflet) zawsze escapujemy.
+        const escapeHtml = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => (
+            { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+        ));
+
+        function DispatcherView() {
+            // Uwaga: szablon przechodzi przez Jinja – w JSX nie używamy podwójnych klamer.
+            const mapRef = useRef(null);
+            const mapInstance = useRef(null);
+            const layers = useRef(null);
+            const qrRef = useRef(null);
+            const pollTimer = useRef(null);
+
+            const [presets, setPresets] = useState([]);
+            const [caller, setCaller] = useState({ lat: 53.1235, lon: 18.0000 });
+            const [radiusM, setRadiusM] = useState(400);
+            const [timeMode, setTimeMode] = useState('now');
+            const [customTime, setCustomTime] = useState('');
+            const [callerPhone, setCallerPhone] = useState('+48 601 234 567');
+            const [channel, setChannel] = useState('sms');
+            const [scan, setScan] = useState(null);
+            const [scanError, setScanError] = useState('');
+            const [session, setSession] = useState(null);
+            const [sentParams, setSentParams] = useState('');
+            const [sending, setSending] = useState(false);
+            const [telemetry, setTelemetry] = useState(null);
+            const [copied, setCopied] = useState(false);
+
+            const nextSunday22 = () => {
+                const d = new Date();
+                d.setDate(d.getDate() + ((7 - d.getDay()) % 7 || 7));
+                const pad = (n) => String(n).padStart(2, '0');
+                return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T22:00:00`;
+            };
+            const simTimestamp = timeMode === 'now' ? null : timeMode === 'sunday' ? nextSunday22() : (customTime || null);
+            const paramsKey = JSON.stringify([caller.lat, caller.lon, radiusM, simTimestamp]);
+            const stale = session && sentParams !== paramsKey;
+
+            // ── Mapa ────────────────────────────────────────────────────────
+            useEffect(() => {
+                fetch('/api/v1/dispatcher/presets').then(r => r.json()).then(setPresets).catch(() => {});
+                const map = L.map(mapRef.current).setView([caller.lat, caller.lon], 16);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    maxZoom: 19, attribution: '© OpenStreetMap autorzy'
+                }).addTo(map);
+                map.on('click', (e) => setCaller({ lat: +e.latlng.lat.toFixed(6), lon: +e.latlng.lng.toFixed(6) }));
+                layers.current = L.layerGroup().addTo(map);
+                mapInstance.current = map;
+                setTimeout(() => map.invalidateSize(), 200);
+                const onResize = () => map.invalidateSize();
+                window.addEventListener('resize', onResize);
+                return () => {
+                    window.removeEventListener('resize', onResize);
+                    if (pollTimer.current) clearInterval(pollTimer.current);
+                    map.remove();
+                };
+            }, []);
+
+            // ── Skan promienia (debounce 250 ms) ────────────────────────────
+            useEffect(() => {
+                // Nowe parametry przerywają poprzedni skan – wolna, starsza odpowiedź nie nadpisze nowszej
+                const ctrl = new AbortController();
+                const t = setTimeout(() => {
+                    const q = new URLSearchParams({ lat: caller.lat, lon: caller.lon, radius_m: radiusM });
+                    if (simTimestamp) q.set('timestamp', simTimestamp);
+                    fetch(`/api/v1/dispatcher/scan?${q}`, { signal: ctrl.signal })
+                        .then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e.detail || 'Błąd skanu')))
+                        .then(d => { setScan(d); setScanError(''); })
+                        .catch(err => {
+                            if (err && err.name === 'AbortError') return;
+                            setScanError(typeof err === 'string' ? err : 'Nie udało się przeskanować okolicy');
+                        });
+                }, 250);
+                return () => { clearTimeout(t); ctrl.abort(); };
+            }, [paramsKey]);
+
+            // ── Rysowanie warstw ────────────────────────────────────────────
+            useEffect(() => {
+                const map = mapInstance.current;
+                if (!map || !layers.current) return;
+                const g = layers.current;
+                g.clearLayers();
+
+                const circle = L.circle([caller.lat, caller.lon], {
+                    radius: radiusM, color: '#C4262E', weight: 2, fillColor: '#C4262E', fillOpacity: 0.08
+                }).addTo(g);
+
+                const callerIcon = L.divIcon({
+                    className: '',
+                    html: '<div class="caller-pulse" aria-hidden="true"><span>112</span></div>',
+                    iconSize: [34, 34], iconAnchor: [17, 17]
+                });
+                L.marker([caller.lat, caller.lon], { icon: callerIcon, zIndexOffset: 1000 })
+                    .bindTooltip('Zgłaszający 112', { direction: 'top', offset: [0, -16] }).addTo(g);
+
+                const colors = { open: '#00875A', unknown: '#B54708', closed: '#5B6B64', unavailable: '#5B6B64' };
+                const best = scan && scan.candidates[0];
+                (scan ? scan.in_radius : []).forEach(a => {
+                    const crossed = a.state === 'closed' || a.state === 'unavailable';
+                    const isBest = best && a.aed_id === best.aed_id;
+                    const size = isBest ? 30 : 24;
+                    const icon = L.divIcon({
+                        className: '',
+                        html: `<div class="aed-pin ${crossed ? 'aed-pin--crossed' : ''} ${isBest ? 'aed-pin--best' : ''}" style="background:${colors[a.state]};width:${size}px;height:${size}px">${crossed ? '✕' : a.state === 'unknown' ? '?' : '+'}</div>`,
+                        iconSize: [size, size], iconAnchor: [size / 2, size / 2]
+                    });
+                    const label = a.state === 'open' ? 'Otwarte' : a.state === 'unknown' ? 'Godziny niepotwierdzone' : (a.reason || 'Niedostępne');
+                    L.marker([a.latitude, a.longitude], { icon })
+                        .bindTooltip(`${escapeHtml(a.address_street || 'AED')} – ${Math.round(a.distance_m)} m<br/>${escapeHtml(label)}${a.reported_recently ? '<br/>⚠ Świadek zgłosił niedostępność' : ''}`)
+                        .addTo(g);
+                });
+
+                if (best) {
+                    L.polyline([[caller.lat, caller.lon], [best.latitude, best.longitude]], {
+                        color: '#00875A', weight: 4, dashArray: '8 8'
+                    }).addTo(g);
+                }
+                map.fitBounds(circle.getBounds(), { padding: [24, 24], maxZoom: 17 });
+            }, [scan, caller.lat, caller.lon, radiusM]);
+
+            // ── Kod QR po utworzeniu sesji ──────────────────────────────────
+            useEffect(() => {
+                if (!session || !qrRef.current) return;
+                qrRef.current.innerHTML = '';
+                new QRCode(qrRef.current, {
+                    text: session.rescue_url, width: 168, height: 168,
+                    colorDark: '#14201B', colorLight: '#FFFFFF', correctLevel: QRCode.CorrectLevel.M
+                });
+            }, [session, stale]);
+
+            // ── Telemetria świadka ──────────────────────────────────────────
+            useEffect(() => {
+                if (pollTimer.current) clearInterval(pollTimer.current);
+                if (!session) return;
+                const poll = () => fetch(`/api/v1/rescue/${session.token}/status`)
+                    .then(r => r.ok ? r.json() : null).then(d => d && setTelemetry(d)).catch(() => {});
+                poll();
+                pollTimer.current = setInterval(poll, 2500);
+                return () => clearInterval(pollTimer.current);
+            }, [session]);
+
+            const applyPreset = (p) => {
+                setCaller({ lat: p.lat, lon: p.lon });
+                if (p.timestamp) { setTimeMode('custom'); setCustomTime(p.timestamp); }
+                else setTimeMode('now');
+                setRadiusM(p.id === 'obrzeza' ? 800 : 400);
+            };
+
+            const send = async () => {
+                setSending(true);
+                try {
+                    const r = await fetch('/api/v1/dispatcher/session', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            lat: caller.lat, lon: caller.lon, radius_m: radiusM, timestamp: simTimestamp,
+                            caller_phone: callerPhone, dispatch_channel: channel
+                        })
+                    });
+                    const d = await r.json();
+                    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+                    setSession(d);
+                    setSentParams(paramsKey);
+                    setTelemetry(null);
+                } catch (err) {
+                    alert('Nie udało się utworzyć sesji: ' + err.message);
+                } finally {
+                    setSending(false);
+                }
+            };
+
+            const copySms = () => {
+                if (!session) return;
+                navigator.clipboard && navigator.clipboard.writeText(session.sms_text);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+            };
+
+            const fmtMin = (s) => Math.max(1, Math.round(s / 60));
+            const best = scan && scan.candidates[0];
+            const counts = scan ? scan.in_radius.reduce((acc, a) => { acc[a.state] = (acc[a.state] || 0) + 1; return acc; }, {}) : {};
+            const steps = [
+                { key: 'dispatched', label: 'Link wysłany do zgłaszającego' },
+                { key: 'opened', label: 'Świadek otworzył link' },
+                { key: 'en_route', label: 'Świadek w drodze do AED' },
+                { key: 'acquired', label: 'AED pobrane – powrót do poszkodowanego' },
+            ];
+            const order = ['pending', 'dispatched', 'opened', 'en_route', 'acquired'];
+            // „unavailable_reported” = świadek dotarł do AED i zgłosił problem → co najmniej „w drodze”
+            const level = (st) => st === 'unavailable_reported' ? order.indexOf('en_route') : order.indexOf(st);
+            const reached = (k) => telemetry && level(telemetry.status) >= order.indexOf(k);
+
+            return (
+                <div className="theme-console h-full flex flex-col lg:flex-row overflow-hidden bg-gray-50">
+                    <div className="w-full lg:w-[460px] bg-white border-r border-gray-200 flex flex-col overflow-y-auto shrink-0 p-4 space-y-4 order-2 lg:order-1">
+                        <div className="border-b border-gray-200 pb-3">
+                            <span className="text-[10px] font-mono font-bold text-[#C4262E] uppercase tracking-widest block">Centrum Powiadamiania Ratunkowego 112</span>
+                            <h2 className="text-base font-bold text-gray-900 mt-0.5">Prowadzenie świadka do AED</h2>
+                            <p className="text-xs text-gray-500 mt-1">Kliknij mapę, aby wskazać miejsce zgłaszającego, albo wybierz scenariusz.</p>
+                        </div>
+
+                        {/* Presety */}
+                        <div className="space-y-1.5">
+                            <span className="text-[11px] font-bold text-gray-600 uppercase block">Scenariusze testowe</span>
+                            <div className="grid gap-1.5">
+                                {presets.map(p => (
+                                    <button key={p.id} type="button" onClick={() => applyPreset(p)}
+                                        className="text-left p-2.5 bg-gray-50 border border-gray-200 rounded hover:border-[#00875A] text-xs">
+                                        <span className="font-semibold text-gray-900">{p.label}</span>
+                                        <span className="block font-mono text-[10px] text-gray-500">{p.lat}, {p.lon}{p.timestamp ? ` · ${p.timestamp.replace('T', ' ').slice(0, 16)}` : ' · teraz'}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Promień i czas */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                            <label className="space-y-1 block">
+                                <span className="text-[11px] font-bold text-gray-600 uppercase block">Promień: <span className="font-mono">{radiusM} m</span></span>
+                                <input type="range" min="200" max="800" step="50" value={radiusM}
+                                    onChange={(e) => setRadiusM(+e.target.value)} className="w-full accent-[#00875A]"
+                                    aria-label="Promień poszukiwań w metrach" />
+                                <span className="text-[10px] text-gray-500 block">ok. {fmtMin(radiusM / 1.4)} min marszu w jedną stronę</span>
+                            </label>
+                            <label className="space-y-1 block">
+                                <span className="text-[11px] font-bold text-gray-600 uppercase block">Czas zdarzenia</span>
+                                <select value={timeMode} onChange={(e) => setTimeMode(e.target.value)} className="gov-input w-full">
+                                    <option value="now">Teraz</option>
+                                    <option value="sunday">Niedziela 22:00</option>
+                                    <option value="custom">Własny (ISO-8601)</option>
+                                </select>
+                                {timeMode === 'custom' && (
+                                    <input type="text" value={customTime} onChange={(e) => setCustomTime(e.target.value)}
+                                        placeholder="2026-11-25T20:30:00" className="gov-input w-full font-mono" />
+                                )}
+                            </label>
+                        </div>
+
+                        {/* Wynik skanu */}
+                        {scanError && <div className="gov-badge gov-badge-red w-full">{scanError}</div>}
+                        {scan && (
+                            <div className="text-[11px] text-gray-500 flex flex-wrap gap-x-3 gap-y-1">
+                                <span>W promieniu: <strong className="text-gray-900">{scan.in_radius.length}</strong></span>
+                                <span className="text-[#006644]">otwarte {counts.open || 0}</span>
+                                <span>zamknięte {counts.closed || 0}</span>
+                                <span>niedostępne {counts.unavailable || 0}</span>
+                                {counts.unknown ? <span className="text-[#b54708]">godz. nieznane {counts.unknown}</span> : null}
+                            </div>
+                        )}
+
+                        {scan && scan.scenario === 'AED_FOUND' && best && (
+                            <div className="gov-card p-4 space-y-3 text-xs border-l-4 border-l-[#00875A]">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                        <span className="gov-badge gov-badge-green text-[10px]">{best.state === 'open' ? 'Otwarte w czasie zdarzenia' : 'Godziny niepotwierdzone'}</span>
+                                        <div className="font-bold text-gray-900 text-sm mt-1">{best.address_street || 'Adres nieznany'}{best.address_city ? `, ${best.address_city}` : ''}</div>
+                                    </div>
+                                    <div className="text-right shrink-0">
+                                        <div className="font-display font-extrabold text-2xl text-[#006644] leading-none">{Math.round(best.distance_m)} m</div>
+                                        <div className="text-[10px] text-gray-500 mt-1">tam i z powrotem ~{fmtMin(best.round_trip_s)} min</div>
+                                    </div>
+                                </div>
+                                {best.state === 'unknown' && <div className="gov-badge gov-badge-amber w-full">{best.reason}</div>}
+                                <div className="bg-gray-50 border border-gray-200 rounded p-2.5 text-gray-800">
+                                    <span className="text-[10px] font-bold uppercase text-gray-500 block">Gdzie w budynku</span>
+                                    {best.location_description || 'Brak opisu – szukaj zielonego znaku AED.'}
+                                </div>
+                                {best.has_access_code
+                                    ? <div className="gov-badge gov-badge-amber w-full text-sm">Szafka na kod – kod pojawi się po wysłaniu trasy (SMS i ekran świadka).</div>
+                                    : <div className="text-[11px] text-gray-500">Szafka bez kodu.</div>}
+                                {best.reported_recently && <div className="gov-badge gov-badge-amber w-full">Świadek niedawno zgłosił to AED jako niedostępne.</div>}
+                                {scan.candidates[1] && (
+                                    <div className="text-[11px] text-gray-500">Rezerwowe: {scan.candidates[1].address_street || 'AED'} · {Math.round(scan.candidates[1].distance_m)} m</div>
+                                )}
+                            </div>
+                        )}
+
+                        {scan && scan.scenario === 'CPR_ONLY' && (
+                            <div className="rounded-lg border-2 border-[#C4262E] bg-red-50 p-4 text-sm text-red-800 space-y-1" role="alert">
+                                <strong className="block">Brak dostępnego AED w promieniu {radiusM} m (najbliższe otwarte urządzenie jest za daleko, aby opuścić poszkodowanego)</strong>
+                                {scan.nearest_open_outside_m && (
+                                    <span className="text-xs">Najbliższe otwarte AED: {Math.round(scan.nearest_open_outside_m)} m.</span>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Zgłaszający i wysyłka */}
+                        <div className="grid grid-cols-[1fr_auto] gap-2 text-xs">
+                            <label className="space-y-1 block">
+                                <span className="text-[11px] font-semibold text-gray-700 block">Telefon zgłaszającego</span>
+                                <input type="tel" value={callerPhone} onChange={(e) => setCallerPhone(e.target.value)} className="gov-input w-full font-mono" />
+                            </label>
+                            <label className="space-y-1 block">
+                                <span className="text-[11px] font-semibold text-gray-700 block">Kanał</span>
+                                <select value={channel} onChange={(e) => setChannel(e.target.value)} className="gov-input">
+                                    <option value="sms">SMS</option>
+                                    <option value="qr">QR</option>
+                                    <option value="mobywatel">PUSH</option>
+                                </select>
+                            </label>
+                        </div>
+
+                        {scan && (
+                            <button type="button" onClick={send} disabled={sending}
+                                className={`w-full min-h-[52px] rounded font-bold text-sm uppercase tracking-wide text-white flex items-center justify-center gap-2 transition ${scan.scenario === 'AED_FOUND' ? 'bg-[#00875A] hover:bg-[#006644]' : 'bg-[#C4262E] hover:bg-[#A81E25]'}`}>
+                                <IconRadio className="w-4 h-4" />
+                                {sending ? 'Wysyłanie…' : scan.scenario === 'AED_FOUND' ? 'WYŚLIJ TRASĘ DO AED (SMS / QR)' : 'WYŚLIJ INSTRUKCJĘ RKO / PIERWSZEJ POMOCY (SMS / QR)'}
+                            </button>
+                        )}
+
+                        {session && stale && (
+                            <div className="gov-badge gov-badge-amber w-full" role="status">Zmieniono parametry zgłoszenia – wyślij ponownie, aby świadek dostał aktualne dane.</div>
+                        )}
+
+                        {session && (
+                            <div className="gov-card p-4 space-y-3 text-xs">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[11px] font-bold uppercase text-gray-600">Sesja {session.call_ref}</span>
+                                    <span className={`gov-badge ${(telemetry ? telemetry.scenario : session.scenario) === 'AED_FOUND' ? 'gov-badge-green' : 'gov-badge-red'}`}>{(telemetry ? telemetry.scenario : session.scenario) === 'AED_FOUND' ? 'Trasa do AED' : 'Instrukcja RKO'}</span>
+                                </div>
+                                {session.aed && session.aed.access_code && (
+                                    <div className="gov-badge gov-badge-amber w-full text-sm font-mono">Kod do szafki: <strong className="tracking-widest">{session.aed.access_code}</strong></div>
+                                )}
+                                {!stale && session.public_url_warning && <div className="gov-badge gov-badge-amber w-full">{session.public_url_warning}</div>}
+                                {!stale && <div className="flex flex-col sm:flex-row gap-3 items-start">
+                                    <div ref={qrRef} className="qr-box shrink-0" aria-label="Kod QR z linkiem dla zgłaszającego"></div>
+                                    <div className="space-y-2 flex-1 min-w-0">
+                                        <pre className="bg-gray-50 border border-gray-200 rounded p-2 whitespace-pre-wrap break-words font-mono text-[11px] text-gray-800">{session.sms_text}</pre>
+                                        <div className="flex gap-2">
+                                            <button type="button" onClick={copySms} className="gov-btn gov-btn-secondary flex-1 py-2 text-xs">{copied ? 'Skopiowano' : 'Kopiuj SMS'}</button>
+                                            <a href={session.rescue_url} target="_blank" rel="noopener noreferrer" className="gov-btn gov-btn-primary flex-1 py-2 text-xs">Widok dzwoniącego</a>
+                                        </div>
+                                    </div>
+                                </div>}
+                                <ol className="space-y-1.5 border-t border-gray-200 pt-3" aria-label="Postęp akcji">
+                                    {(telemetry ? telemetry.scenario : session.scenario) === 'AED_FOUND' ? steps.map(s => (
+                                        <li key={s.key} className={`flex items-center gap-2 ${reached(s.key) ? 'text-[#006644] font-semibold' : 'text-gray-500'}`}>
+                                            <IconCheck className="w-3.5 h-3.5" /> {s.label}
+                                        </li>
+                                    )) : (
+                                        <li className="text-gray-700">Świadek prowadzi RKO z metronomem 110/min – utrzymuj połączenie.</li>
+                                    )}
+                                    {telemetry && telemetry.unavailable_reports > 0 && (
+                                        <li className="text-[#C4262E] font-semibold flex items-center gap-2">
+                                            <IconAlert className="w-3.5 h-3.5" /> Świadek zgłosił niedostępne AED – {telemetry.scenario === 'CPR_ONLY' ? 'przełączono na instrukcję RKO' : 'przepięto na AED rezerwowe'}
+                                        </li>
+                                    )}
+                                </ol>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="flex-1 relative min-h-[320px] order-1 lg:order-2">
+                        <div ref={mapRef} className="absolute inset-0" role="application" aria-label="Mapa zgłoszenia – kliknij, aby wskazać miejsce zgłaszającego"></div>
+                        <div className="absolute bottom-3 left-3 z-[500] map-legend rounded shadow px-3 py-2 text-[11px] space-y-1">
+                            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-sm bg-[#00875A]"></span>Otwarte</div>
+                            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-sm bg-[#5B6B64]"></span>Zamknięte / niedostępne</div>
+                            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-sm bg-[#B54708]"></span>Godziny nieznane</div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // TAB 3: REGISTER VIEW (PORTAL DYSPONENTA / FORMULARZ ZGŁOSZENIA)
+        // ═══════════════════════════════════════════════════════════════════
+        function RegisterView() {
+            const mapRef = useRef(null);
+            const mapInstance = useRef(null);
+            const markerRef = useRef(null);
+
+            const [formData, setFormData] = useState({
+                latitude: 52.2319,
+                longitude: 21.0067,
+                address_city: 'Warszawa',
+                address_street: '',
+                address_postal_code: '',
+                location_description: '',
+                indoor: false,
+                access_type: 'public',
+                access_code: '',
+                opening_hours: '24/7',
+                operator_name: '',
+                operator_phone: '',
+                operator_email: ''
+            });
+
+            const [uploadReport, setUploadReport] = useState(null);
+            const [uploading, setUploading] = useState(false);
+            const [submitSuccess, setSubmitSuccess] = useState(false);
+
+            useEffect(() => {
+                if (!mapInstance.current && mapRef.current) {
+                    const map = L.map(mapRef.current).setView([formData.latitude, formData.longitude], 13);
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        maxZoom: 19,
+                        attribution: '© OpenStreetMap autorzy'
+                    }).addTo(map);
+
+                    const icon = L.divIcon({
+                        className: '',
+                        html: `<div style="width:24px;height:24px;background:#00875A;border:2px solid #ffffff;border-radius:3px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;">+</div>`,
+                        iconSize: [24, 24],
+                        iconAnchor: [12, 12]
+                    });
+
+                    markerRef.current = L.marker([formData.latitude, formData.longitude], { icon }).addTo(map);
+
+                    map.on('click', (e) => {
+                        const lat = parseFloat(e.latlng.lat.toFixed(6));
+                        const lon = parseFloat(e.latlng.lng.toFixed(6));
+                        setFormData(prev => ({ ...prev, latitude: lat, longitude: lon }));
+                        if (markerRef.current) markerRef.current.setLatLng([lat, lon]);
+                    });
+
+                    mapInstance.current = map;
+                    setTimeout(() => map.invalidateSize(), 200);
+                    window.addEventListener('resize', () => map.invalidateSize());
+                }
+            }, []);
+
+            const handleSingleSubmit = async (e) => {
+                e.preventDefault();
+                const formBody = new URLSearchParams();
+                for (const key in formData) {
+                    formBody.append(key, formData[key]);
+                }
+
+                try {
+                    const resp = await fetch('/api/v1/ingest/single', {
+                        method: 'POST',
+                        body: formBody,
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+                    });
+                    if (resp.ok) {
+                        setSubmitSuccess(true);
+                        setTimeout(() => setSubmitSuccess(false), 5000);
+                    }
+                } catch (err) {
+                    alert('Błąd rejestracji: ' + err.message);
+                }
+            };
+
+            const handleFileUpload = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                setUploading(true);
+                const data = new FormData();
+                data.append('file', file);
+
+                try {
+                    const resp = await fetch('/api/v1/ingest/upload', {
+                        method: 'POST',
+                        body: data
+                    });
+                    const report = await resp.json();
+                    if (!resp.ok) {
+                        throw new Error(report.detail || report.error || `HTTP ${resp.status}`);
+                    }
+                    setUploadReport(report);
+                } catch (err) {
+                    alert('Błąd importu pliku: ' + err.message);
+                } finally {
+                    setUploading(false);
+                }
+            };
+
+            return (
+                <div className="h-full overflow-y-auto p-4 sm:p-8 bg-[#F5F7F6]">
+                    <div className="max-w-5xl mx-auto space-y-6">
+                        <div className="border-b border-gray-200 pb-4">
+                            <span className="text-[11px] font-bold text-[#006644] uppercase tracking-widest block">Twoja minuta. Czyjeś życie.</span>
+                            <h1 className="font-display font-extrabold text-3xl text-gray-900 mt-1">Otwórz dane swojego AED</h1>
+                            <p className="text-xs text-gray-600 mt-1">
+                                Wprowadź urządzenie ręcznie za pomocą formularza lub prześlij zbiór w formacie CSV lub JSON. Rekordy są poddawane walidacji oraz automatycznej deduplikacji przestrzennej.
+                            </p>
+                        </div>
+
+                        {submitSuccess && (
+                            <div className="bg-green-50 border border-green-300 p-3.5 rounded text-green-900 text-xs font-semibold flex items-center gap-2">
+                                <IconCheck className="w-5 h-5 text-green-700" />
+                                <span>Defibrylator został pomyślnie zarejestrowany i włączony do ogólnokrajowej bazy danych.</span>
+                            </div>
+                        )}
+
+                        <div className="grid lg:grid-cols-2 gap-6">
+                            {/* Form */}
+                            <div className="bg-white border border-gray-200 rounded p-5 space-y-4 shadow-xs">
+                                <div className="text-xs font-bold uppercase tracking-wider text-gray-900 border-b border-gray-100 pb-2">
+                                    Dane podstawowe urządzenia
+                                </div>
+
+                                <div className="h-44 rounded border border-gray-200 overflow-hidden relative" ref={mapRef}>
+                                    <div className="absolute top-2 left-2 z-[400] bg-white/90 border border-gray-200 px-2 py-0.5 rounded text-[10px] text-gray-700 font-medium">
+                                        Kliknij na mapie, aby wybrać punkt
+                                    </div>
+                                </div>
+
+                                <form onSubmit={handleSingleSubmit} className="space-y-3 text-xs">
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label className="text-[11px] font-semibold text-gray-700 block mb-1">Szerokość (lat) *</label>
+                                            <input
+                                                type="number"
+                                                step="0.000001"
+                                                required
+                                                value={formData.latitude}
+                                                onChange={(e) => setFormData({ ...formData, latitude: parseFloat(e.target.value) || 0 })}
+                                                className="gov-input w-full font-mono"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-[11px] font-semibold text-gray-700 block mb-1">Długość (lon) *</label>
+                                            <input
+                                                type="number"
+                                                step="0.000001"
+                                                required
+                                                value={formData.longitude}
+                                                onChange={(e) => setFormData({ ...formData, longitude: parseFloat(e.target.value) || 0 })}
+                                                className="gov-input w-full font-mono"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label className="text-[11px] font-semibold text-gray-700 block mb-1">Miejscowość</label>
+                                            <input
+                                                type="text"
+                                                value={formData.address_city}
+                                                onChange={(e) => setFormData({ ...formData, address_city: e.target.value })}
+                                                className="gov-input w-full"
+                                                placeholder="np. Warszawa"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-[11px] font-semibold text-gray-700 block mb-1">Kod pocztowy</label>
+                                            <input
+                                                type="text"
+                                                value={formData.address_postal_code}
+                                                onChange={(e) => setFormData({ ...formData, address_postal_code: e.target.value })}
+                                                className="gov-input w-full font-mono"
+                                                placeholder="00-000"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="text-[11px] font-semibold text-gray-700 block mb-1">Ulica i numer obiektu</label>
+                                        <input
+                                            type="text"
+                                            value={formData.address_street}
+                                            onChange={(e) => setFormData({ ...formData, address_street: e.target.value })}
+                                            className="gov-input w-full"
+                                            placeholder="np. ul. Marszałkowska 1"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="text-[11px] font-semibold text-gray-700 block mb-1">Dokładny opis rozmieszczenia</label>
+                                        <textarea
+                                            rows={2}
+                                            value={formData.location_description}
+                                            onChange={(e) => setFormData({ ...formData, location_description: e.target.value })}
+                                            className="gov-input w-full resize-none"
+                                            placeholder="np. Hol główny, parter, przy portierni wejście B"
+                                        />
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label className="text-[11px] font-semibold text-gray-700 block mb-1">Kod dostępu do szafki</label>
+                                            <input
+                                                type="text"
+                                                value={formData.access_code}
+                                                onChange={(e) => setFormData({ ...formData, access_code: e.target.value })}
+                                                className="gov-input w-full font-mono"
+                                                placeholder="1234 (jeśli wymagany)"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-[11px] font-semibold text-gray-700 block mb-1">Godziny dostępności</label>
+                                            <input
+                                                type="text"
+                                                value={formData.opening_hours}
+                                                onChange={(e) => setFormData({ ...formData, opening_hours: e.target.value })}
+                                                className="gov-input w-full font-mono"
+                                                placeholder="24/7 lub Mo-Fr 08:00-18:00"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label className="text-[11px] font-semibold text-gray-700 block mb-1">Podmiot zgłaszający / operator</label>
+                                            <input
+                                                type="text"
+                                                value={formData.operator_name}
+                                                onChange={(e) => setFormData({ ...formData, operator_name: e.target.value })}
+                                                className="gov-input w-full"
+                                                placeholder="np. Urząd Gminy, OSP"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-[11px] font-semibold text-gray-700 block mb-1">Telefon kontaktowy</label>
+                                            <input
+                                                type="text"
+                                                value={formData.operator_phone}
+                                                onChange={(e) => setFormData({ ...formData, operator_phone: e.target.value })}
+                                                className="gov-input w-full font-mono"
+                                                placeholder="+48 ..."
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="pt-2">
+                                        <button type="submit" className="gov-btn gov-btn-primary w-full py-2.5 font-bold uppercase">
+                                            Zarejestruj urządzenie AED
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+
+                            {/* Batch Upload */}
+                            <div className="space-y-4">
+                                <div className="bg-white border border-gray-200 rounded p-5 space-y-4 shadow-xs">
+                                    <div className="text-xs font-bold uppercase tracking-wider text-gray-900 border-b border-gray-100 pb-2">
+                                        Import wsadowy (CSV / JSON)
+                                    </div>
+                                    <p className="text-xs text-gray-600 leading-relaxed">
+                                        Instytucje publiczne i dysponenci mogą przesyłać zbiory danych zawierające wiele lokalizacji defibrylatorów. System zwaliduje współrzędne w granicach RP oraz zdeduplikuje punkty z dokładnością do 30 m.
+                                    </p>
+
+                                    <label className="border-2 border-dashed border-gray-300 hover:border-[#00875A] rounded p-6 flex flex-col items-center justify-center cursor-pointer transition bg-gray-50">
+                                        <IconDownload className="w-8 h-8 text-gray-400 mb-2 rotate-180" />
+                                        <span className="text-xs font-semibold text-gray-800">Kliknij, aby wybrać plik do weryfikacji</span>
+                                        <span className="text-[10px] text-gray-500 mt-0.5">Dozwolone rozszerzenia: .csv, .json (kodowanie UTF-8)</span>
+                                        <input
+                                            type="file"
+                                            accept=".csv,.json"
+                                            onChange={handleFileUpload}
+                                            className="hidden"
+                                            disabled={uploading}
+                                        />
+                                    </label>
+
+                                    {uploading && (
+                                        <div className="text-xs text-center text-gray-600 font-mono animate-pulse">
+                                            Przetwarzanie i sprawdzanie duplikatów...
+                                        </div>
+                                    )}
+
+                                    {uploadReport && (
+                                        <div className="bg-gray-50 border border-gray-200 rounded p-3 text-xs space-y-2">
+                                            <span className="font-bold text-gray-900 uppercase text-[11px] block border-b border-gray-200 pb-1">
+                                                Wynik walidacji i deduplikacji
+                                            </span>
+                                            <div className="grid grid-cols-3 gap-2 text-center pt-1 font-mono">
+                                                <div className="bg-white p-2 rounded border border-gray-200">
+                                                    <div className="text-base font-bold text-gray-900">{uploadReport.total_submitted}</div>
+                                                    <div className="text-[10px] text-gray-500">Przesłano</div>
+                                                </div>
+                                                <div className="bg-white p-2 rounded border border-gray-200">
+                                                    <div className="text-base font-bold text-green-700">{uploadReport.valid}</div>
+                                                    <div className="text-[10px] text-gray-500">Poprawnych</div>
+                                                </div>
+                                                <div className="bg-white p-2 rounded border border-gray-200">
+                                                    <div className="text-base font-bold text-amber-700">{uploadReport.duplicates_merged}</div>
+                                                    <div className="text-[10px] text-gray-500">Scalono</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Government Schema Specification Box */}
+                                <div className="bg-white border border-gray-200 rounded p-5 text-xs space-y-2.5 shadow-xs">
+                                    <span className="font-bold text-gray-900 uppercase text-[11px] block">
+                                        Wzorcowy zakres danych dla dane.gov.pl
+                                    </span>
+                                    <p className="text-gray-600 leading-relaxed text-[11px]">
+                                        Szczegółowy opis formatu danych, słowników dopuszczalnych wartości i reguł kontroli jakości zawiera oficjalny arkusz specyfikacji.
+                                    </p>
+                                    <a
+                                        href="/api/v1/export/schema-xlsx"
+                                        className="gov-btn gov-btn-secondary py-1.5 text-xs inline-flex mt-1"
+                                    >
+                                        <IconDownload className="w-3.5 h-3.5" />
+                                        <span>Pobierz wzorcowy schemat danych (.XLSX)</span>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // TAB 4: DANE OTWARTE (karta zbioru do publikacji w dane.gov.pl)
+        // ═══════════════════════════════════════════════════════════════════
+        function OpenDataView({ stats }) {
+            const [previewData, setPreviewData] = useState(null);
+
+            useEffect(() => {
+                fetch('/api/v1/export/json')
+                    .then(r => r.json())
+                    .then(data => setPreviewData(data.slice(0, 2)))
+                    .catch(() => {});
+            }, []);
+
+            return (
+                <div className="h-full overflow-y-auto p-4 sm:p-8 bg-[#F5F7F6]">
+                    <div className="max-w-5xl mx-auto space-y-6">
+                        {/* Dataset Title Header */}
+                        <div className="bg-white border border-gray-200 p-6 rounded shadow-xs space-y-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span className="gov-badge gov-badge-blue">Publikacja docelowa: dane.gov.pl</span>
+                                <span className="gov-badge gov-badge-green">Aktualizowany na bieżąco</span>
+                                <span className="gov-badge gov-badge-gray">Licencja: CC0 1.0</span>
+                            </div>
+                            <h1 className="font-display font-extrabold text-3xl text-gray-900">
+                                Dane otwarte akcji Otwórz AED
+                            </h1>
+                            <p className="text-xs text-gray-600 leading-relaxed max-w-3xl">
+                                Ujednolicony zbiór danych przestrzennych o defibrylatorach AED na terytorium Rzeczypospolitej Polskiej. Zawiera współrzędne geograficzne WGS84, informacje o dostępności czasowej, o tym, czy szafka jest zamykana na kod (sam kod trafia tylko do dyspozytorów 112), oraz szczegółowe opisy wejść do obiektów w celu natychmiastowego dysponowania ratowniczego.
+                            </p>
+                        </div>
+
+                        {/* Pliki do pobrania */}
+                        <div className="bg-white border border-gray-200 rounded p-6 space-y-4 shadow-xs">
+                            <h2 className="text-sm font-bold uppercase tracking-wider text-gray-900">
+                                Dane do pobrania (formaty odczytywalne maszynowo)
+                            </h2>
+
+                            <div className="divide-y divide-gray-100">
+                                {[
+                                    {
+                                        name: 'Zbiór defibrylatorów AED – Arkusz kalkulacyjny CSV',
+                                        format: 'CSV',
+                                        badgeClass: 'gov-badge-green',
+                                        desc: 'Format CSV (kodowanie UTF-8 z BOM, separator przecinek, koordynaty WGS84)',
+                                        url: '/api/v1/export/csv'
+                                    },
+                                    {
+                                        name: 'Pełny zbiór obiektów AED w formacie JSON',
+                                        format: 'JSON',
+                                        badgeClass: 'gov-badge-blue',
+                                        desc: 'Standardowa tablica obiektów JSON dla programistów i aplikacji medycznych',
+                                        url: '/api/v1/export/json'
+                                    },
+                                    {
+                                        name: 'Warstwa przestrzenna GeoJSON FeatureCollection',
+                                        format: 'GEOJSON',
+                                        badgeClass: 'gov-badge-amber',
+                                        desc: 'Geometria punktowa WGS84 dla systemów GIS, QGIS oraz aplikacji mapowych',
+                                        url: '/api/v1/export/geojson'
+                                    },
+                                    {
+                                        name: 'Wzorcowy zakres danych i specyfikacja pól (.xlsx)',
+                                        format: 'XLSX',
+                                        badgeClass: 'gov-badge-gray',
+                                        desc: 'Oficjalny arkusz specyfikacji pól, reguł walidacji oraz przykładowych rekordów',
+                                        url: '/api/v1/export/schema-xlsx'
+                                    }
+                                ].map((res, idx) => (
+                                    <div key={idx} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                        <div className="space-y-1">
+                                            <div className="flex items-center gap-2">
+                                                <span className={`gov-badge ${res.badgeClass} font-mono text-[10px]`}>{res.format}</span>
+                                                <span className="font-semibold text-xs text-gray-900">{res.name}</span>
+                                            </div>
+                                            <div className="text-[11px] text-gray-500">{res.desc}</div>
+                                        </div>
+                                        <a
+                                            href={res.url}
+                                            className="gov-btn gov-btn-secondary text-xs py-1.5 shrink-0"
+                                        >
+                                            <IconDownload className="w-3.5 h-3.5" />
+                                            <span>Pobierz plik</span>
+                                        </a>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Government Technical Metadata */}
+                        <div className="bg-white border border-gray-200 rounded p-6 space-y-4 shadow-xs text-xs">
+                            <h2 className="text-sm font-bold uppercase tracking-wider text-gray-900">
+                                Metadane techniczne zbioru
+                            </h2>
+                            <table className="w-full text-left">
+                                <tbody className="divide-y divide-gray-100 text-[11px]">
+                                    <tr>
+                                        <td className="py-2.5 text-gray-500 font-medium w-1/3">Dostawca danych:</td>
+                                        <td className="py-2.5 text-gray-900 font-semibold">Ministerstwo Cyfryzacji / Państwowe Ratownictwo Medyczne</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="py-2.5 text-gray-500 font-medium">Kategoria tematyczna:</td>
+                                        <td className="py-2.5 text-gray-900">Zdrowie, bezpieczeństwo powszechne i porządek publiczny</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="py-2.5 text-gray-500 font-medium">Układ odniesienia:</td>
+                                        <td className="py-2.5 text-gray-900 font-mono">WGS84 (EPSG:4326)</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="py-2.5 text-gray-500 font-medium">Warunki ponownego wykorzystywania:</td>
+                                        <td className="py-2.5 text-gray-900">Domena publiczna (Creative Commons CC0 1.0 Universal)</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="py-2.5 text-gray-500 font-medium">Interfejs programistyczny (API):</td>
+                                        <td className="py-2.5 text-gray-900 font-mono text-[#006644]">/api/v1/aeds (REST JSON)</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="py-2.5 text-gray-500 font-medium">Częstotliwość aktualizacji:</td>
+                                        <td className="py-2.5 text-gray-900">Czas rzeczywisty (ciągła integracja Overpass API + zgłoszenia dysponentów)</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {/* API Preview */}
+                        <div className="bg-white border border-gray-200 rounded p-6 space-y-3 shadow-xs text-xs">
+                            <h2 className="text-sm font-bold uppercase tracking-wider text-gray-900">
+                                Podgląd odpowiedzi API (/api/v1/export/json)
+                            </h2>
+                            <pre className="bg-gray-50 border border-gray-200 p-3.5 rounded font-mono text-[11px] text-gray-800 overflow-x-auto">
+                                {previewData ? JSON.stringify(previewData, null, 2) : 'Wczytywanie...'}
+                            </pre>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // TAB 0: AKCJA „OTWÓRZ AED”
+        // ═══════════════════════════════════════════════════════════════════
+        function CampaignView({ stats, onNavigate }) {
+            const [regions, setRegions] = useState(null);
+            const [regionsError, setRegionsError] = useState(false);
+
+            useEffect(() => {
+                fetch('/api/v1/stats/regions')
+                    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+                    .then(setRegions)
+                    .catch(() => setRegionsError(true));
+            }, []);
+
+            const ranked = regions ? regions.filter(r => r.name !== 'nieprzypisane') : [];
+            const unassigned = regions ? regions.find(r => r.name === 'nieprzypisane') : null;
+            const totals = ranked.reduce((acc, r) => ({ t: acc.t + r.total, c: acc.c + r.complete }), { t: 0, c: 0 });
+            const pctAll = totals.t ? Math.round(totals.c / totals.t * 100) : null;
+            const fmt = (n) => n.toLocaleString('pl-PL');
+            // Uwaga: szablon przechodzi przez Jinja – w JSX nie używamy podwójnych klamer.
+            const barWidth = (pct) => ({ width: `${Math.max(pct, 1)}%` });
+
+            const steps = [
+                { n: 1, title: 'Pobierz szablon', text: 'Pobierz szablon – jeden arkusz, 20 pól, opis każdego z nich.' },
+                { n: 2, title: 'Uzupełnij dane', text: 'Uzupełnij dane o swoich AED – lokalizację, godziny dostępu, kontakt.' },
+                { n: 3, title: 'Otwórz je', text: 'Opublikuj w dane.gov.pl albo prześlij przez formularz – trafią na mapę i do dyspozytorów 112.' },
+            ];
+
+            return (
+                <div className="h-full overflow-y-auto">
+                    {/* HERO */}
+                    <section className="campaign-hero border-b border-[#E7EDEA]">
+                        <div className="max-w-6xl mx-auto px-4 sm:px-8 py-10 sm:py-16 grid lg:grid-cols-[1.4fr_1fr] gap-10 items-center">
+                            <div className="space-y-6">
+                                <span className="gov-badge gov-badge-green">Ogólnopolska akcja · dane.gov.pl</span>
+                                <h1 className="font-display font-extrabold text-[#14201B] text-4xl sm:text-5xl lg:text-6xl leading-[1.02]">
+                                    Poświęć minutę.<br />
+                                    <span className="text-[#00875A]">Podaruj czas na przeżycie.</span>
+                                </h1>
+                                <div className="ecg-rule w-60" aria-hidden="true"></div>
+                                <p className="text-base sm:text-lg text-[#4A5A53] max-w-xl">
+                                    Ogólnopolska akcja otwierania danych o defibrylatorach w dane.gov.pl.
+                                    Poświęć minutę, by otworzyć dane o swoim AED – podaruj komuś czas na przeżycie.
+                                </p>
+                                <div className="flex flex-col sm:flex-row gap-3">
+                                    <a href="/api/v1/export/schema-xlsx" className="gov-btn gov-btn-primary text-base px-6 py-3">
+                                        <IconDownload className="w-5 h-5" /> Pobierz szablon danych (.xlsx)
+                                    </a>
+                                    <button onClick={() => onNavigate('register', '/submit')} className="gov-btn gov-btn-secondary text-base px-6 py-3">
+                                        <IconPlus className="w-5 h-5" /> Zgłoś swój AED
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="col-span-2 rounded-2xl bg-[#14201B] text-white p-6">
+                                    <div className="text-xs uppercase tracking-widest text-[#9FD9BF] font-semibold">Na mapie już</div>
+                                    <div className="font-display font-extrabold text-5xl sm:text-6xl mt-1">
+                                        {stats ? fmt(stats.total_aed) : '—'}
+                                    </div>
+                                    <div className="text-sm text-[#C9D6D0] mt-1">defibrylatorów AED w całej Polsce</div>
+                                </div>
+                                <div className="rounded-2xl bg-white border border-[#E7EDEA] p-5">
+                                    <div className="font-display font-extrabold text-3xl text-[#C4262E]">−10%</div>
+                                    <div className="text-xs text-[#4A5A53] mt-1">szansy na przeżycie z każdą minutą bez defibrylacji</div>
+                                </div>
+                                <div className="rounded-2xl bg-white border border-[#E7EDEA] p-5">
+                                    <div className="font-display font-extrabold text-3xl text-[#00875A]">{pctAll !== null ? `${pctAll}%` : '—'}</div>
+                                    <div className="text-xs text-[#4A5A53] mt-1">rekordów z kompletnymi danymi – reszta czeka na dysponentów</div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <div className="max-w-6xl mx-auto px-4 sm:px-8 py-10 space-y-12">
+                        {/* 3 KROKI */}
+                        <section aria-labelledby="steps-h" className="space-y-5">
+                            <div>
+                                <h2 id="steps-h" className="font-display font-extrabold text-2xl sm:text-3xl text-[#14201B]">Masz defibrylator? Otwórz jego dane w 3 krokach</h2>
+                                <p className="text-sm text-[#4A5A53] mt-1">Dla szkół, urzędów, firm, galerii i każdego, kto opiekuje się urządzeniem AED.</p>
+                            </div>
+                            <ol className="grid md:grid-cols-3 gap-4">
+                                {steps.map(s => (
+                                    <li key={s.n} className="gov-card p-5 space-y-2">
+                                        <span className="inline-flex w-9 h-9 items-center justify-center rounded-full bg-[#00875A] text-white font-display font-extrabold">{s.n}</span>
+                                        <h3 className="font-bold text-[#14201B]">{s.title}</h3>
+                                        <p className="text-sm text-[#4A5A53]">{s.text}</p>
+                                    </li>
+                                ))}
+                            </ol>
+                        </section>
+
+                        {/* RANKING */}
+                        <section aria-labelledby="rank-h" className="space-y-5">
+                            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
+                                <div>
+                                    <h2 id="rank-h" className="font-display font-extrabold text-2xl sm:text-3xl text-[#14201B]">Które województwo otworzyło najwięcej?</h2>
+                                    <p className="text-sm text-[#4A5A53] mt-1">
+                                        Odsetek AED z kompletnymi danymi. Kompletny = opis lokalizacji + poprawne godziny dostępności + kontakt do opiekuna.
+                                    </p>
+                                </div>
+                                <button onClick={() => onNavigate('map', '/mapa')} className="gov-btn gov-btn-secondary self-start sm:self-auto">
+                                    <IconMapPin className="w-4 h-4" /> Zobacz mapę
+                                </button>
+                            </div>
+
+                            {regionsError && (
+                                <div className="gov-card p-5 text-sm text-[#4A5A53]">Ranking chwilowo niedostępny.</div>
+                            )}
+                            {!regionsError && !regions && (
+                                <div className="gov-card p-5 text-sm text-[#4A5A53]">Liczę ranking…</div>
+                            )}
+                            {ranked.length > 0 && (
+                                <ol className="gov-card divide-y divide-[#E7EDEA]">
+                                    {ranked.map((r, i) => (
+                                        <li key={r.name} className="grid grid-cols-[2rem_1fr_auto] sm:grid-cols-[2.5rem_12rem_1fr_6rem] items-center gap-x-3 gap-y-1 px-4 sm:px-5 py-3">
+                                            <span className={`font-display font-extrabold text-lg ${i < 3 ? 'text-[#006644]' : 'text-[#4A5A53]'}`}>{i + 1}</span>
+                                            <span className="font-semibold text-[#14201B] capitalize">{r.name}</span>
+                                            <span className="font-mono font-bold text-[#14201B] text-right sm:order-last">{r.pct_complete.toLocaleString('pl-PL')}%</span>
+                                            <div className="col-start-2 col-span-2 sm:col-start-auto sm:col-span-1 flex items-center gap-3">
+                                                <div className="h-2.5 flex-1 rounded-full bg-[#E7EDEA] overflow-hidden" role="presentation">
+                                                    <div className="h-full rounded-full bg-[#00875A]" style={barWidth(r.pct_complete)}></div>
+                                                </div>
+                                                <span className="text-xs text-[#4A5A53] whitespace-nowrap">{fmt(r.complete)} / {fmt(r.total)} AED</span>
+                                            </div>
+                                        </li>
+                                    ))}
+                                </ol>
+                            )}
+                            {unassigned && (
+                                <p className="text-xs text-[#4A5A53]">
+                                    Poza granicami województw (np. na wodzie lub tuż przy granicy): {fmt(unassigned.total)} AED.
+                                    Granice: uproszczone dane PRG (GUGiK).
+                                </p>
+                            )}
+                        </section>
+
+                        {/* STOPKA AKCJI */}
+                        <section className="rounded-2xl bg-[#00875A] text-white p-6 sm:p-8 flex flex-col md:flex-row md:items-center justify-between gap-5">
+                            <div className="flex items-center gap-4">
+                                <OtworzAedLogo className="w-14 h-14 shrink-0 [&>rect]:fill-[#006644]" />
+                                <div>
+                                    <div className="font-display font-extrabold text-2xl">Twoja minuta. Czyjeś życie.</div>
+                                    <div className="text-sm text-white">Dane trafiają do otwartego zbioru i do dyspozytorów 112.</div>
+                                </div>
+                            </div>
+                            <button onClick={() => onNavigate('opendata', '/opendata')} className="gov-btn bg-white text-[#006644] hover:bg-[#E6F4EE] px-6 py-3">
+                                <IconFileText className="w-5 h-5" /> Zobacz otwarte dane
+                            </button>
+                        </section>
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+</body>
+</html>

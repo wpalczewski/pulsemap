@@ -1,0 +1,214 @@
+/* Pulsmap – Tactical Medical CAD Theme (Państwowe Ratownictwo Medyczne / 112) */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap');
+
+:root {
+    --cad-bg: #0b0f19;
+    --cad-panel: #111827;
+    --cad-panel-elevated: #1e293b;
+    --cad-border: #283548;
+    --cad-border-subtle: #1c2636;
+    
+    --text-primary: #f8fafc;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+    
+    --prm-red: #b91c1c;
+    --prm-red-hover: #991b1b;
+    --prm-red-bg: rgba(185, 28, 28, 0.12);
+    
+    --med-green: #15803d;
+    --med-green-bg: rgba(21, 128, 61, 0.12);
+    
+    --med-amber: #b45309;
+    --med-amber-bg: rgba(180, 83, 9, 0.12);
+    
+    --med-blue: #1d4ed8;
+    --med-blue-bg: rgba(29, 78, 216, 0.12);
+}
+
+body {
+    background-color: var(--cad-bg);
+    color: var(--text-primary);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    letter-spacing: -0.01em;
+    -webkit-font-smoothing: antialiased;
+}
+
+.font-mono-cad {
+    font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: var(--cad-bg);
+}
+::-webkit-scrollbar-thumb {
+    background: var(--cad-border);
+    border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+}
+
+/* Tactical Cards */
+.cad-card {
+    background-color: var(--cad-panel);
+    border: 1px solid var(--cad-border);
+    border-radius: 6px;
+}
+
+.cad-card-header {
+    background-color: rgba(30, 41, 59, 0.5);
+    border-bottom: 1px solid var(--cad-border);
+    padding: 10px 16px;
+    font-size: 0.825rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+}
+
+/* Badges */
+.cad-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+    border: 1px solid transparent;
+}
+.cad-badge-green {
+    background-color: var(--med-green-bg);
+    color: #4ade80;
+    border-color: rgba(34, 197, 94, 0.25);
+}
+.cad-badge-amber {
+    background-color: var(--med-amber-bg);
+    color: #fbbf24;
+    border-color: rgba(245, 158, 11, 0.25);
+}
+.cad-badge-red {
+    background-color: var(--prm-red-bg);
+    color: #f87171;
+    border-color: rgba(239, 68, 68, 0.25);
+}
+.cad-badge-blue {
+    background-color: var(--med-blue-bg);
+    color: #60a5fa;
+    border-color: rgba(59, 130, 246, 0.25);
+}
+.cad-badge-slate {
+    background-color: rgba(100, 116, 139, 0.15);
+    color: #cbd5e1;
+    border-color: rgba(148, 163, 184, 0.2);
+}
+
+/* Inputs & Forms */
+.cad-input {
+    background-color: #0d131f;
+    border: 1px solid var(--cad-border);
+    color: var(--text-primary);
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-size: 0.875rem;
+    transition: border-color 0.15s ease;
+}
+.cad-input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 1px #3b82f6;
+}
+
+/* Tactical Buttons */
+.cad-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.cad-btn-primary {
+    background-color: var(--prm-red);
+    color: #ffffff;
+    border-color: #dc2626;
+}
+.cad-btn-primary:hover:not(:disabled) {
+    background-color: var(--prm-red-hover);
+}
+.cad-btn-success {
+    background-color: var(--med-green);
+    color: #ffffff;
+    border-color: #16a34a;
+}
+.cad-btn-success:hover:not(:disabled) {
+    background-color: #166534;
+}
+.cad-btn-secondary {
+    background-color: #1e293b;
+    color: #e2e8f0;
+    border-color: var(--cad-border);
+}
+.cad-btn-secondary:hover:not(:disabled) {
+    background-color: #334155;
+}
+.cad-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+/* Tactical Leaflet Styles */
+.leaflet-container {
+    background-color: #0b0f19 !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 100% !important;
+}
+.leaflet-popup-content-wrapper {
+    background-color: var(--cad-panel) !important;
+    color: var(--text-primary) !important;
+    border: 1px solid var(--cad-border) !important;
+    border-radius: 6px !important;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5) !important;
+}
+.leaflet-popup-tip {
+    background-color: var(--cad-panel) !important;
+    border: 1px solid var(--cad-border) !important;
+}
+.leaflet-popup-content {
+    margin: 12px 14px !important;
+    line-height: 1.4 !important;
+}
+
+/* Tactical Marker Cluster overrides */
+.marker-cluster-small,
+.marker-cluster-medium,
+.marker-cluster-large {
+    background-color: rgba(30, 41, 59, 0.8) !important;
+    border: 2px solid #38bdf8 !important;
+    border-radius: 50% !important;
+}
+.marker-cluster-small div,
+.marker-cluster-medium div,
+.marker-cluster-large div {
+    background-color: #0f172a !important;
+    color: #f8fafc !important;
+    font-family: 'JetBrains Mono', monospace !important;
+    font-weight: 700 !important;
+    font-size: 12px !important;
+    border-radius: 50% !important;
+}

@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Lokalna baza SQLite (tworzona przy starcie / przez skrypty importu)
+data/*.db
+data/*.db-shm
+data/*.db-wal
+
+# Sekrety
+.env
+
+# macOS
+.DS_Store
+
+# Robocze pliki planów
+.superpowers/

@@ -1,0 +1,306 @@
+/* Otwórz AED – identyfikacja wizualna akcji
+   Klasy .gov-* zostają jako nazwy komponentów (zgodność z istniejącym kodem),
+   ale wyglądają zgodnie z marką. */
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap');
+
+:root {
+    --brand: #00875A;
+    --brand-dark: #006644;
+    --brand-tint: #E6F4EE;
+    --ink: #14201B;
+    --ink-muted: #4A5A53;
+    --line: #D5DED9;
+    --line-soft: #E7EDEA;
+    --bg: #F5F7F6;
+    --card: #FFFFFF;
+    --warn: #B54708;
+    --warn-bg: #FFFAEB;
+    --critical: #C4262E;
+    --critical-bg: #FEF3F2;
+    --console-bg: #0E1512;
+    --console-card: #17211C;
+    --console-line: #2A3832;
+    --console-text: #E8F0EC;
+    --console-muted: #A9BAB2;
+}
+
+html, body { background-color: var(--bg); }
+
+body {
+    color: var(--ink);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    letter-spacing: -0.005em;
+    -webkit-font-smoothing: antialiased;
+}
+
+.font-display, h1, h2.font-display {
+    font-family: 'Bricolage Grotesque', 'Inter', sans-serif;
+    letter-spacing: -0.02em;
+}
+.font-gov { font-family: 'Inter', sans-serif; }
+.font-mono-gov { font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace; }
+
+:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+
+/* ── Nagłówek i nawigacja ───────────────────────────────────────────── */
+.brand-header {
+    background: var(--card);
+    border-bottom: 1px solid var(--line);
+}
+.gov-nav-btn {
+    position: relative;
+    padding: 12px 14px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--ink-muted);
+    white-space: nowrap;
+    transition: color 0.15s ease;
+    border-bottom: 3px solid transparent;
+}
+.gov-nav-btn:hover { color: var(--brand-dark); }
+.gov-nav-btn.active {
+    color: var(--brand-dark);
+    border-bottom-color: var(--brand);
+}
+.gov-nav-btn.nav-112.active {
+    color: var(--critical);
+    border-bottom-color: var(--critical);
+}
+
+/* ── Karty ──────────────────────────────────────────────────────────── */
+.gov-card {
+    background-color: var(--card);
+    border: 1px solid var(--line-soft);
+    border-radius: 10px;
+    box-shadow: 0 1px 2px rgba(20, 32, 27, 0.05);
+}
+.gov-card-header {
+    background-color: #F9FBFA;
+    border-bottom: 1px solid var(--line-soft);
+    padding: 12px 18px;
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: var(--ink);
+}
+
+/* ── Plakietki ──────────────────────────────────────────────────────── */
+.gov-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+.gov-badge-green, .gov-badge-blue { background: var(--brand-tint); color: var(--brand-dark); border: 1px solid #A8D9C2; }
+.gov-badge-amber { background: var(--warn-bg); color: var(--warn); border: 1px solid #FEDF89; }
+.gov-badge-red { background: var(--critical-bg); color: #A81E25; border: 1px solid #FECDCA; }
+.gov-badge-gray { background: #EEF2F0; color: var(--ink-muted); border: 1px solid var(--line); }
+
+/* ── Przyciski ──────────────────────────────────────────────────────── */
+.gov-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
+    border: 1px solid transparent;
+}
+.gov-btn-primary { background-color: var(--brand); color: #FFFFFF; }
+.gov-btn-primary:hover:not(:disabled) { background-color: var(--brand-dark); }
+.gov-btn-secondary { background-color: var(--card); color: var(--brand-dark); border-color: var(--brand); }
+.gov-btn-secondary:hover:not(:disabled) { background-color: var(--brand-tint); }
+.gov-btn-danger { background-color: var(--critical); color: #FFFFFF; }
+.gov-btn-danger:hover:not(:disabled) { background-color: #A81E25; }
+
+/* ── Formularze ─────────────────────────────────────────────────────── */
+.gov-input {
+    background-color: var(--card);
+    border: 1px solid var(--line);
+    color: var(--ink);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 0.875rem;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.gov-input:focus {
+    outline: none;
+    border-color: var(--brand);
+    box-shadow: 0 0 0 3px rgba(0, 135, 90, 0.18);
+}
+
+/* ── Leaflet ────────────────────────────────────────────────────────── */
+.leaflet-container {
+    background-color: var(--bg) !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 100% !important;
+    font-family: 'Inter', sans-serif !important;
+}
+.leaflet-popup-content-wrapper {
+    background-color: var(--card) !important;
+    color: var(--ink) !important;
+    border: 1px solid var(--line) !important;
+    border-radius: 10px !important;
+    box-shadow: 0 8px 20px rgba(20, 32, 27, 0.12) !important;
+}
+.leaflet-popup-tip { background-color: var(--card) !important; border: 1px solid var(--line) !important; }
+
+.marker-cluster-small,
+.marker-cluster-medium,
+.marker-cluster-large {
+    background-color: rgba(0, 135, 90, 0.22) !important;
+    border: 2px solid var(--brand) !important;
+    border-radius: 50% !important;
+}
+.marker-cluster-small div,
+.marker-cluster-medium div,
+.marker-cluster-large div {
+    background-color: var(--brand) !important;
+    color: #FFFFFF !important;
+    font-family: 'Inter', sans-serif !important;
+    font-weight: 700 !important;
+    font-size: 12px !important;
+    border-radius: 50% !important;
+}
+
+/* ── Akcja: hero ────────────────────────────────────────────────────── */
+.campaign-hero {
+    background:
+        radial-gradient(1200px 400px at 85% -10%, rgba(0, 135, 90, 0.18), transparent 60%),
+        linear-gradient(180deg, #FFFFFF 0%, var(--bg) 100%);
+}
+.ecg-rule {
+    height: 24px;
+    background: no-repeat left center / auto 100%
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 240 24'%3E%3Cpath d='M0 12h90l8-10 10 20 8-14 6 4h118' fill='none' stroke='%2300875A' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+/* ── Konsola dyspozytora (ciemna) ───────────────────────────────────── */
+.theme-console { background-color: var(--console-bg) !important; color: var(--console-text); }
+.theme-console .bg-white,
+.theme-console .bg-gray-50,
+.theme-console .bg-gray-100,
+.theme-console [class*="bg-[#F5F7F6]"],
+.theme-console [class*="bg-[#f8fafc]"],
+.theme-console [class*="bg-[#E6F4EE]"] { background-color: var(--console-card) !important; }
+.theme-console [class*="border-gray"],
+.theme-console [class*="border-[#"],
+.theme-console .gov-card,
+.theme-console .gov-card-header { border-color: var(--console-line) !important; }
+.theme-console .gov-card-header { background-color: #121B17 !important; color: var(--console-text) !important; }
+.theme-console [class*="text-gray-9"],
+.theme-console [class*="text-gray-8"],
+.theme-console [class*="text-gray-7"],
+.theme-console [class*="text-[#14201B]"] { color: var(--console-text) !important; }
+.theme-console [class*="text-gray-6"],
+.theme-console [class*="text-gray-5"],
+.theme-console [class*="text-gray-4"] { color: var(--console-muted) !important; }
+.theme-console [class*="text-[#00875A]"],
+.theme-console [class*="text-[#006644]"] { color: #4FD1A1 !important; }
+.theme-console input,
+.theme-console select,
+.theme-console textarea,
+.theme-console .gov-input {
+    background-color: #0B110E !important;
+    color: var(--console-text) !important;
+    border-color: var(--console-line) !important;
+}
+.theme-console input::placeholder { color: #7D8E86; }
+.theme-console .gov-btn-secondary { background-color: transparent; color: #4FD1A1; border-color: #4FD1A1; }
+.theme-console .gov-badge-gray { background: #22302A; color: var(--console-muted); border-color: var(--console-line); }
+.theme-console .gov-badge-green,
+.theme-console .gov-badge-blue { background: #0F2E22; color: #6EE7B7; border-color: #1F5A43; }
+.theme-console .gov-badge-amber { background: #33240C; color: #FCD34D; border-color: #6B4A12; }
+.theme-console .gov-badge-red { background: #3A1416; color: #FCA5A5; border-color: #7A2A2E; }
+.theme-console pre { background-color: #0B110E !important; color: var(--console-text) !important; }
+.theme-console .leaflet-container { background-color: #0B110E !important; }
+/* Jasne „tinty” (zielone, czerwone, bursztynowe) w konsoli → ciemne odpowiedniki */
+.theme-console [class*="bg-emerald-50"],
+.theme-console [class*="bg-green-50"],
+.theme-console [class*="bg-emerald-100"] { background-color: #0F2E22 !important; }
+.theme-console [class*="bg-red-50"],
+.theme-console [class*="bg-[#FEF3F2]"] { background-color: #2A1214 !important; }
+.theme-console [class*="bg-amber-50"],
+.theme-console [class*="bg-[#fffaeb]"],
+.theme-console [class*="bg-yellow-50"] { background-color: #2B210D !important; }
+.theme-console [class*="border-emerald"],
+.theme-console [class*="border-green"] { border-color: #1F5A43 !important; }
+.theme-console [class*="text-green-7"],
+.theme-console [class*="text-green-8"],
+.theme-console [class*="text-green-9"],
+.theme-console [class*="text-emerald-7"],
+.theme-console [class*="text-emerald-8"] { color: #6EE7B7 !important; }
+.theme-console [class*="text-red-7"],
+.theme-console [class*="text-red-8"],
+.theme-console [class*="text-[#C4262E]"] { color: #FF8A8F !important; }
+.theme-console [class*="text-[#b54708]"],
+.theme-console [class*="text-amber-7"],
+.theme-console [class*="text-amber-8"] { color: #FCD34D !important; }
+.theme-console .bg-\[\#00875A\] { color: #FFFFFF !important; }
+.theme-console .bg-\[\#00875A\] * { color: #FFFFFF !important; }
+
+/* ── Dyspozytor: zgłaszający, pinezki AED, legenda ─────────────────── */
+.caller-pulse {
+    position: relative;
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    background: #C4262E;
+    border: 3px solid #FFFFFF;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+    display: flex; align-items: center; justify-content: center;
+    color: #FFFFFF; font: 800 10px/1 'Inter', sans-serif;
+}
+.caller-pulse::after {
+    content: '';
+    position: absolute; inset: -3px;
+    border-radius: 50%;
+    border: 3px solid #C4262E;
+    animation: caller-ring 1.4s ease-out infinite;
+}
+@keyframes caller-ring {
+    from { transform: scale(1); opacity: 0.9; }
+    to { transform: scale(2.4); opacity: 0; }
+}
+.aed-pin {
+    border: 2px solid #FFFFFF;
+    border-radius: 8px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+    display: flex; align-items: center; justify-content: center;
+    color: #FFFFFF; font: 800 12px/1 'Inter', sans-serif;
+}
+.aed-pin--crossed { opacity: 0.85; text-decoration: line-through; }
+.aed-pin--best { border-width: 3px; box-shadow: 0 0 0 3px rgba(0, 135, 90, 0.45), 0 1px 4px rgba(0, 0, 0, 0.4); }
+.map-legend { background: rgba(255, 255, 255, 0.95); color: #14201B; }
+
+@media (prefers-reduced-motion: reduce) {
+    .caller-pulse::after { animation: none; opacity: 0.5; transform: scale(1.6); }
+}
+.theme-console .gov-card { background-color: var(--console-card) !important; }
+/* Kod QR zawsze na białym tle z marginesem (strefa ciszy) – inaczej telefon go nie odczyta */
+.qr-box, .theme-console .qr-box { background: #FFFFFF !important; padding: 12px; border-radius: 6px; line-height: 0; }
+
+/* ── Świadek: metronom RKO ─────────────────────────────────────────── */
+.cpr-beat {
+    width: 148px; height: 148px;
+    border-radius: 50%;
+    background: #FEF3F2;
+    border: 6px solid #C4262E;
+    display: flex; align-items: center; justify-content: center;
+    color: #7A1A1F; font: 800 18px/1 'Inter', sans-serif;
+    transition: transform 0.08s ease-out, background-color 0.08s ease-out;
+}
+.cpr-beat--on { transform: scale(1.12); background: #C4262E; color: #FFFFFF; }
+@media (prefers-reduced-motion: reduce) {
+    .cpr-beat, .cpr-beat--on { transform: none; transition: none; }
+}

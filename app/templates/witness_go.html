@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="pl" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Otwórz AED · Trasa do defibrylatora</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/static/brand.css" />
+    
+    <!-- React 18 & Babel Standalone -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="h-full bg-[#F5F7F6] text-[#14201B] font-sans selection:bg-[#00875A] selection:text-white">
+    <div id="root" class="h-full flex flex-col justify-between"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        const initialAed = {% if aed %}{{ aed | tojson }}{% else %}null{% endif %};
+        const token = {{ token | tojson }};
+        const hasError = {% if error %}true{% else %}false{% endif %};
+        const scenario = {{ (scenario or "AED_FOUND") | tojson }};
+        const sessionData = {% if session %}{{ session | tojson }}{% else %}{}{% endif %};
+
+        // Znak akcji Otwórz AED
+        const OtworzAedMark = () => (
+            <span className="inline-flex items-center gap-2">
+                <svg className="w-8 h-8 shrink-0" viewBox="0 0 48 48" role="img" aria-label="Logo akcji Otwórz AED">
+                    <rect width="48" height="48" rx="12" fill="#00875A" />
+                    <path d="M16 22v-6.5a8.5 8.5 0 0 1 16.4-3.1" fill="none" stroke="#FFFFFF" strokeWidth="3.6" strokeLinecap="round" />
+                    <rect x="10.5" y="21.5" width="27" height="18" rx="4.5" fill="#FFFFFF" />
+                    <path d="M13.5 31h6l2.4-5.2 3.4 9.4 2.8-7.2 1.8 3H34.5" fill="none" stroke="#00875A" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                <span className="font-display font-extrabold text-lg leading-none text-[#14201B]">Otwórz <span className="text-[#006644]">AED</span></span>
+            </span>
+        );
+
+        const IconNavigation = ({ className = "w-5 h-5" }) => (
+            <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="3 11 22 2 13 21 11 13 3 11" />
+            </svg>
+        );
+
+        const IconAlert = ({ className = "w-5 h-5" }) => (
+            <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+        );
+
+        const IconPhone = ({ className = "w-5 h-5" }) => (
+            <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z" />
+            </svg>
+        );
+
+        const IconKey = ({ className = "w-5 h-5" }) => (
+            <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 2l-2 2m-1.5 1.5L19 7l-2 2-1.5-1.5L14 9l-1.5-1.5" />
+                <circle cx="7.5" cy="16.5" r="4.5" />
+            </svg>
+        );
+
+        const IconCheckCircle = ({ className = "w-5 h-5" }) => (
+            <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                <polyline points="22 4 12 14.01 9 11.01" />
+            </svg>
+        );
+
+        // ═══ Widok B: instrukcja RKO + metronom 110/min ═══════════════════
+        // Rytm liczony na zegarze AudioContext (brak dryfu setInterval); bez dźwięku
+        // (blokada, brak API) puls działa na performance.now().
+        const BPM = 110;
+        const BEAT_S = 60 / BPM;
+
+        function CprView() {
+            const [running, setRunning] = useState(false);
+            const [beat, setBeat] = useState(false);
+            const [elapsed, setElapsed] = useState(0);
+            const [soundOn, setSoundOn] = useState(true);
+            const [soundState, setSoundState] = useState('idle');   // idle | running | blocked
+            const audio = useRef(null);
+            const raf = useRef(0);
+            const startRef = useRef(0);   // performance.now()/1000 na początku biegu
+            const accRef = useRef(0);     // czas z poprzednich biegów (s)
+            const nextBeat = useRef(0);   // kolejne uderzenie (s, zegar performance)
+            const timers = useRef([]);
+            const soundRef = useRef(true);
+            soundRef.current = soundOn;
+
+            // Puls wizualny i stoper ZAWSZE na performance.now() – przerwanie audio
+            // (połączenie, Siri, tryb głośnomówiący) nie może zatrzymać rytmu.
+            const now = () => performance.now() / 1000;
+
+            const click = (atPerf) => {
+                const ctx = audio.current;
+                if (!ctx || ctx.state !== 'running' || !soundRef.current) return;
+                const t = ctx.currentTime + Math.max(0, atPerf - now());
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.frequency.value = 880;
+                gain.gain.setValueAtTime(0.25, t);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+                osc.connect(gain).connect(ctx.destination);
+                osc.start(t); osc.stop(t + 0.05);
+            };
+
+            const tick = () => {
+                const t0 = now();
+                // Po powrocie z tła nie odpalamy zaległych uderzeń seriami – rytm od teraz
+                if (t0 - nextBeat.current > 1) nextBeat.current = t0 + 0.05;
+                while (nextBeat.current < t0 + 0.1) {
+                    const beatAt = nextBeat.current;
+                    click(beatAt);
+                    const id = setTimeout(() => {
+                        setBeat(true);
+                        window.__cprBeats && window.__cprBeats.push(performance.now());
+                        if (navigator.vibrate) navigator.vibrate(30);
+                        timers.current.push(setTimeout(() => setBeat(false), 120));
+                    }, Math.max(0, (beatAt - t0) * 1000));
+                    timers.current.push(id);
+                    nextBeat.current += BEAT_S;
+                }
+                if (timers.current.length > 40) timers.current = timers.current.slice(-20);
+                setElapsed(accRef.current + (t0 - startRef.current));
+                raf.current = requestAnimationFrame(tick);
+            };
+
+            const start = () => {
+                try {
+                    if (!audio.current) {
+                        const Ctx = window.AudioContext || window.webkitAudioContext;
+                        if (Ctx) {
+                            audio.current = new Ctx();
+                            audio.current.onstatechange = () =>
+                                setSoundState(audio.current.state === 'running' ? 'running' : 'blocked');
+                        }
+                    }
+                    if (audio.current) {
+                        audio.current.resume()
+                            .then(() => setSoundState(audio.current.state === 'running' ? 'running' : 'blocked'))
+                            .catch(() => setSoundState('blocked'));
+                    } else {
+                        setSoundState('blocked');
+                    }
+                } catch (e) { audio.current = null; setSoundState('blocked'); }
+                startRef.current = now();
+                nextBeat.current = startRef.current + 0.05;
+                setRunning(true);
+                raf.current = requestAnimationFrame(tick);
+            };
+
+            const stop = () => {
+                cancelAnimationFrame(raf.current);
+                timers.current.forEach(clearTimeout);
+                timers.current = [];
+                setBeat(false);
+                accRef.current += now() - startRef.current;
+                setRunning(false);
+            };
+
+            useEffect(() => () => {
+                cancelAnimationFrame(raf.current);
+                timers.current.forEach(clearTimeout);
+                if (audio.current) audio.current.close().catch(() => {});
+            }, []);
+
+            const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
+            const ss = String(Math.floor(elapsed % 60)).padStart(2, '0');
+            const cprSteps = [
+                { n: 1, title: 'Sprawdź bezpieczeństwo i przytomność', text: 'Potrząśnij za ramiona, głośno zapytaj. Odchyl głowę do tyłu i sprawdź oddech – nie dłużej niż 10 s.' },
+                { n: 2, title: 'Połóż poszkodowanego na twardym podłożu', text: 'Na plecach. Odsłoń klatkę piersiową.' },
+                { n: 3, title: 'Uciskaj środek klatki piersiowej', text: 'Jeśli nie oddycha prawidłowo: dłonie jedna na drugiej na środku klatki piersiowej, ręce proste. Głębokość 5–6 cm, tempo 100–120 uciśnięć na minutę, bez przerywania. Po każdym ucisku pozwól klatce w pełni unieść się.' },
+            ];
+
+            return (
+                <div className="space-y-4">
+                    <section className="rounded-2xl bg-[#7A1A1F] text-white p-5" role="alert">
+                        <div className="text-xs font-semibold uppercase tracking-widest text-[#FFD5D7]">Polecenie dyspozytora 112</div>
+                        <h1 className="font-display font-extrabold text-2xl leading-tight mt-1">
+                            Nie opuszczaj poszkodowanego — w pobliżu brak dostępnego AED. Rozpocznij resuscytację (RKO) do przyjazdu karetki.
+                        </h1>
+                    </section>
+
+                    <ol className="space-y-3">
+                        {cprSteps.map(st => (
+                            <li key={st.n} className="bg-white border border-[#D5DED9] rounded-2xl p-4 flex gap-4 items-start">
+                                <span className="font-display font-extrabold text-4xl leading-none text-[#14201B] w-8 shrink-0 text-center">{st.n}</span>
+                                <div>
+                                    <div className="font-bold text-lg text-[#14201B] leading-snug">{st.title}</div>
+                                    <div className="text-base text-[#24312B] mt-1">{st.text}</div>
+                                </div>
+                            </li>
+                        ))}
+                    </ol>
+
+                    <section className="bg-white border border-[#D5DED9] rounded-2xl p-4 space-y-4 text-center" aria-label="Metronom uciśnięć">
+                        <div className={`cpr-beat mx-auto ${beat ? 'cpr-beat--on' : ''}`} aria-hidden="true">
+                            <span>{running ? 'UCIŚNIJ' : '110/min'}</span>
+                        </div>
+                        <div className="font-mono font-bold text-4xl text-[#14201B]" aria-live="off">
+                            {mm}:{ss}
+                            <span className="block font-sans text-sm font-semibold text-[#4A5A53] mt-1">czas prowadzenia RKO</span>
+                        </div>
+                        <button type="button" onClick={running ? stop : start}
+                            className={`gov-btn w-full min-h-[64px] text-lg font-bold ${running ? 'gov-btn-secondary' : 'gov-btn-danger'}`}>
+                            {running ? 'ZATRZYMAJ RYTM' : 'URUCHOM RYTM UCISKÓW (110/min)'}
+                        </button>
+                        <label className="flex items-center justify-center gap-2 text-base text-[#14201B]">
+                            <input type="checkbox" checked={soundOn} onChange={(e) => setSoundOn(e.target.checked)} className="w-5 h-5 accent-[#00875A]" />
+                            Sygnał dźwiękowy
+                        </label>
+                        {running && soundOn && soundState === 'blocked' && (
+                            <p className="text-sm font-semibold text-[#7A2E04]" role="status">
+                                Dźwięk niedostępny (np. wyciszony telefon lub rozmowa) – uciskaj w rytm pulsującego koła.
+                            </p>
+                        )}
+                    </section>
+
+                    <a href="tel:112" className="gov-btn gov-btn-secondary w-full min-h-[64px] text-lg font-bold">
+                        <IconPhone className="w-5 h-5" />
+                        <span>Zadzwoń 112 (głośnomówiący)</span>
+                    </a>
+                </div>
+            );
+        }
+
+        function WitnessApp() {
+            const [currentAed, setCurrentAed] = useState(initialAed);
+            const [mode, setMode] = useState(scenario === 'CPR_ONLY' ? 'cpr' : 'navigation'); // navigation | acquired | cpr
+            const [reporting, setReporting] = useState(false);
+            const [message, setMessage] = useState(null);
+
+            useEffect(() => {
+                if (hasError || scenario === 'CPR_ONLY') return;
+                // Register 'en_route' once view is mounted and verified
+                fetch(`/api/v1/rescue/${token}/event`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ event: 'en_route' })
+                }).catch(() => {});
+            }, []);
+
+            const handleAcquired = async () => {
+                setReporting(true);
+                try {
+                    await fetch(`/api/v1/rescue/${token}/event`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ event: 'acquired' })
+                    });
+                    setMode('acquired');
+                } catch (err) {
+                    setMode('acquired');
+                } finally {
+                    setReporting(false);
+                }
+            };
+
+            const handleReportUnavailable = async () => {
+                setReporting(true);
+                try {
+                    const resp = await fetch(`/api/v1/rescue/${token}/event`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ event: 'unavailable' })
+                    });
+                    const data = await resp.json();
+                    if (data.switched) {
+                        window.location.reload();
+                    } else if (data.scenario === 'CPR_ONLY') {
+                        // Brak innego AED w promieniu – od razu instrukcja RKO, bez przeładowania
+                        setMode('cpr');
+                        setReporting(false);
+                        window.scrollTo(0, 0);
+                    } else {
+                        setMessage(data.error || 'Nie udało się zgłosić. Zadzwoń pod 112.');
+                        setReporting(false);
+                    }
+                } catch (err) {
+                    alert('Błąd zgłoszenia. Spróbuj ponownie lub zadzwoń pod 112.');
+                    setReporting(false);
+                }
+            };
+
+            if (!hasError && mode === 'cpr') {
+                return (
+                    <div className="max-w-md mx-auto w-full p-4 space-y-4">
+                        <header className="flex items-center justify-between">
+                            <OtworzAedMark />
+                            <span className="gov-badge gov-badge-red text-[11px] font-bold">112 · na żywo</span>
+                        </header>
+                        <CprView />
+                    </div>
+                );
+            }
+
+            if (hasError || !currentAed) {
+                return (
+                    <div className="max-w-md mx-auto p-6 flex flex-col justify-center items-center h-full text-center space-y-4">
+                        <div className="w-16 h-16 rounded bg-red-100 border border-red-300 flex items-center justify-center text-red-700">
+                            <IconAlert className="w-8 h-8" />
+                        </div>
+                        <h1 className="text-xl font-bold tracking-tight text-gray-900 uppercase">Sesja Zdarzenia Wygasła</h1>
+                        <p className="text-xs text-gray-600 leading-relaxed">
+                            Link dyspozytorski jest nieaktywny lub akcja ratownicza została zakończona. W razie nagłego zatrzymania krążenia natychmiast skontaktuj się z numerem alarmowym.
+                        </p>
+                        <a
+                            href="tel:112"
+                            className="gov-btn gov-btn-danger w-full py-4 text-sm font-bold tracking-wider mt-4"
+                        >
+                            <IconPhone className="w-5 h-5" />
+                            <span>Połącz z numerem 112</span>
+                        </a>
+                    </div>
+                );
+            }
+
+            if (mode === 'acquired') {
+                return (
+                    <div className="max-w-md mx-auto w-full p-4 flex flex-col justify-between h-full space-y-4">
+                        <div className="bg-white border border-green-300 p-3 rounded shadow-xs">
+                            <div className="flex items-center gap-2.5">
+                                <OtworzAedMark />
+                                <div className="font-extrabold text-sm text-[#14201B] border-l border-[#D5DED9] pl-2.5">
+                                    Pobrano defibrylator
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Return Instructions Card */}
+                        <div className="bg-green-700 text-white rounded p-5 shadow-md space-y-4 text-center">
+                            <div className="w-14 h-14 bg-white/20 rounded-full flex items-center justify-center mx-auto">
+                                <IconCheckCircle className="w-8 h-8 text-white" />
+                            </div>
+                            <div>
+                                <span className="text-[11px] font-mono tracking-widest uppercase text-green-200 block">DYSPOZYTOR 112 POWIADOMIONY</span>
+                                <h2 className="text-xl font-black mt-1 uppercase">Wracaj natychmiast do poszkodowanego!</h2>
+                                <p className="text-xs text-green-100 mt-2 leading-relaxed">
+                                    Biegnij z powrotem. Każda sekunda zwiększa szanse na przeżycie.
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* 3 Step AED Protocol */}
+                        <div className="bg-white border border-gray-200 rounded p-4 space-y-3 text-xs shadow-xs">
+                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">KROKI PO POWROCIE NA MIEJSCE:</span>
+                            
+                            <div className="flex items-start gap-3 p-2 bg-gray-50 rounded border border-gray-200">
+                                <span className="w-6 h-6 rounded-full bg-[#00875A] text-white flex items-center justify-center font-bold text-xs shrink-0">1</span>
+                                <div>
+                                    <strong className="text-gray-900 block">Włącz zasilanie AED</strong>
+                                    <span className="text-gray-600 text-[11px]">Otwórz pokrywę lub wciśnij zielony przycisk ON. Urządzenie natychmiast wyda instrukcje głosowe w języku polskim.</span>
+                                </div>
+                            </div>
+
+                            <div className="flex items-start gap-3 p-2 bg-gray-50 rounded border border-gray-200">
+                                <span className="w-6 h-6 rounded-full bg-[#00875A] text-white flex items-center justify-center font-bold text-xs shrink-0">2</span>
+                                <div>
+                                    <strong className="text-gray-900 block">Przyklej elektrody</strong>
+                                    <span className="text-gray-600 text-[11px]">Przyklej elektrody na odsłoniętą klatkę piersiową poszkodowanego dokładnie tak, jak pokazano na rysunku.</span>
+                                </div>
+                            </div>
+
+                            <div className="flex items-start gap-3 p-2 bg-gray-50 rounded border border-gray-200">
+                                <span className="w-6 h-6 rounded-full bg-[#00875A] text-white flex items-center justify-center font-bold text-xs shrink-0">3</span>
+                                <div>
+                                    <strong className="text-gray-900 block">Postępuj zgodnie z poleceniami AED</strong>
+                                    <span className="text-gray-600 text-[11px]">Nie dotykaj poszkodowanego podczas analizy rytmu serca. Jeśli defibrylacja jest zalecana, wciśnij migający przycisk wstrząsu.</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Emergency Contact */}
+                        <div className="space-y-2 pt-2">
+                            <a
+                                href="tel:112"
+                                className="gov-btn gov-btn-danger w-full min-h-[64px] text-lg font-bold text-center"
+                            >
+                                <IconPhone className="w-4 h-4" />
+                                <span>Połącz z dyspozytorem 112 (Głośnomówiący)</span>
+                            </a>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="max-w-md mx-auto w-full p-4 flex flex-col justify-between h-full space-y-4">
+                    {/* Nagłówek */}
+                    <header className="flex items-center justify-between">
+                        <OtworzAedMark />
+                        <span className="gov-badge gov-badge-red text-[11px] font-bold">112 · na żywo</span>
+                    </header>
+
+                    {/* Polecenie dyspozytora + czas */}
+                    <section className="rounded-2xl bg-[#14201B] text-white p-5" aria-live="polite">
+                        <div className="text-xs font-semibold uppercase tracking-widest text-[#9FD9BF]">Polecenie dyspozytora 112</div>
+                        <h1 className="font-display font-extrabold text-2xl leading-tight mt-1">Biegnij po defibrylator i wróć na miejsce</h1>
+                        <div className="font-display font-extrabold text-4xl leading-tight mt-4">
+                            {Math.round(currentAed.distance_m || 0)} m • ok. {Math.max(1, Math.round(currentAed.walk_time_min || 1))} min drogi
+                        </div>
+                        <span className={`inline-block mt-3 px-3 py-1 rounded-full text-sm font-bold ${
+                            currentAed.hours_status === 'open' ? 'bg-[#E6F4EE] text-[#0B3D2C]'
+                            : currentAed.hours_status === 'closed' ? 'bg-[#FEF3F2] text-[#7A1A1F]' : 'bg-[#FFFAEB] text-[#7A2E04]'}`}>
+                            {currentAed.hours_status === 'open' ? 'OTWARTE TERAZ'
+                                : currentAed.hours_status === 'closed' ? 'MOŻE BYĆ ZAMKNIĘTE – SPRAWDŹ' : 'GODZINY NIEPOTWIERDZONE'}
+                        </span>
+                        {sessionData.call_ref && (
+                            <div className="text-xs font-mono text-[#C9D6D0] border-t border-white/15 mt-4 pt-2 flex justify-between">
+                                <span>Zgłoszenie</span>
+                                <strong className="text-white">{sessionData.call_ref}</strong>
+                            </div>
+                        )}
+                    </section>
+
+                    {/* Gdzie dokładnie */}
+                    <section className="bg-white border border-[#D5DED9] rounded-2xl p-4 space-y-3 text-sm">
+                        <div>
+                            <div className="text-xs font-bold text-[#4A5A53] uppercase tracking-wider">Adres</div>
+                            <div className="font-bold text-lg text-[#14201B] mt-0.5">{currentAed.address_street || 'Lokalizacja wskazana przez dyspozytora'}</div>
+                            {(currentAed.address_city || currentAed.address_postal_code) && (
+                                <div className="text-sm text-[#4A5A53]">{currentAed.address_city} {currentAed.address_postal_code}</div>
+                            )}
+                        </div>
+
+                        <div>
+                            <div className="text-[#14201B] font-semibold leading-relaxed bg-[#FFFAEB] border-2 border-[#B54708] p-3 rounded-lg text-lg">
+                                <span className="text-sm font-bold uppercase tracking-wider text-[#7A2E04] block">Lokalizacja:</span>
+                                {currentAed.location_description || 'Szukaj zielonego znaku z sercem i błyskawicą.'}
+                            </div>
+                        </div>
+
+                        {currentAed.access_code ? (
+                            <div className="bg-[#FFFAEB] border-2 border-[#B54708] p-3 rounded-lg">
+                                <span className="text-xs font-bold text-[#7A2E04] uppercase tracking-wider flex items-center gap-1.5">
+                                    <IconKey className="w-4 h-4" />
+                                    KOD DO SZAFKI:
+                                </span>
+                                <div className="text-4xl font-black font-mono text-[#14201B] tracking-widest mt-1">
+                                    {currentAed.access_code}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="bg-[#E6F4EE] border border-[#A8D9C2] p-3 rounded-lg text-[#0B3D2C] font-semibold flex items-center gap-2">
+                                <IconCheckCircle className="w-5 h-5 shrink-0" />
+                                <span>Szafka bez kodu – pociągnij za uchwyt.</span>
+                            </div>
+                        )}
+
+                        <div className="flex justify-between items-center text-sm text-[#4A5A53] border-t border-[#E7EDEA] pt-2">
+                            <span>Godziny dostępności</span>
+                            <strong className="text-[#14201B] font-mono">{currentAed.opening_hours || '24/7'}</strong>
+                        </div>
+                    </section>
+
+                    {message && (
+                        <div className="bg-red-50 border border-red-300 p-3 rounded text-red-900 text-xs font-semibold">
+                            {message}
+                        </div>
+                    )}
+
+                    {/* Akcje – min. 64 px wysokości */}
+                    <div className="space-y-3 pt-1">
+                        <a
+                            href={currentAed.google_maps_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="gov-btn w-full min-h-[64px] text-lg font-bold bg-[#14201B] text-white hover:bg-black"
+                        >
+                            <IconNavigation className="w-5 h-5" />
+                            <span>OTWÓRZ NAWIGACJĘ PIESZĄ (Google Maps)</span>
+                        </a>
+
+                        <button
+                            onClick={handleAcquired}
+                            disabled={reporting}
+                            className="gov-btn gov-btn-primary w-full min-h-[64px] text-lg font-bold"
+                        >
+                            <IconCheckCircle className="w-6 h-6" />
+                            <span>Pobrałem AED – wracam</span>
+                        </button>
+
+                        <button
+                            onClick={handleReportUnavailable}
+                            disabled={reporting}
+                            className="gov-btn gov-btn-danger w-full min-h-[64px] text-lg font-bold text-center"
+                        >
+                            <IconAlert className="w-5 h-5 shrink-0" />
+                            <span>{reporting ? 'Zgłaszam…' : 'URZĄDZENIE ZAMKNIĘTE / BRAK AED NA MIEJSCU'}</span>
+                        </button>
+
+                        <a href="tel:112" className="gov-btn gov-btn-secondary w-full min-h-[64px] text-lg font-bold">
+                            <IconPhone className="w-5 h-5" />
+                            <span>Zadzwoń 112</span>
+                        </a>
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<WitnessApp />);
+    </script>
+</body>
+</html>
