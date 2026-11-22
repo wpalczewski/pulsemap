@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
 import json
 import os
@@ -16,7 +17,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, UploadFile, File, Form, Query
-from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -28,7 +29,8 @@ from app.etl import (
     fetch_osm_aeds_snapshot,
 )
 from app.opening_hours import Availability, availability, format_pl
-from app.regions import RegionStat, load_voivodeships, region_stats
+from app.regions import RegionStat, assign_voivodeship, load_voivodeships, region_stats
+from app.wykaz_aed import aed_to_wykaz_row, dane_gov_pl_xml, wykaz_csv
 from app.dispatch import ScanResult, scan_radius
 from urllib.parse import urlparse
 from app.models import (
@@ -228,6 +230,59 @@ async def export_schema_xlsx():
     )
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# dane.gov.pl: wykaz defibrylatorów AED (zasilanie ręczne i automatyczne)
+# ═══════════════════════════════════════════════════════════════════════
+_wykaz_cache: tuple[datetime, list[dict]] | None = None
+
+
+def _wykaz_rows() -> list[dict]:
+    """Wiersze wykazu AED (z województwem liczonym ze współrzędnych), cache 10 min."""
+    global _wykaz_cache
+    now = datetime.now()
+    if _wykaz_cache and now - _wykaz_cache[0] < REGIONS_CACHE_TTL:
+        return _wykaz_cache[1]
+    regions = load_voivodeships(REGIONS_PATH)
+    db = get_db()
+    rows = []
+    for i, r in enumerate(db.execute("SELECT * FROM aed ORDER BY aed_id"), start=1):
+        aed = _row_dict(r)
+        rows.append(aed_to_wykaz_row(aed, i, assign_voivodeship(aed["latitude"], aed["longitude"], regions)))
+    _wykaz_cache = (now, rows)
+    return rows
+
+
+@app.api_route("/api/v1/export/wykaz-aed.csv", methods=["GET", "HEAD"])
+def export_wykaz_aed_csv():
+    """Wykaz AED w zakresie kolumn portalu dane.gov.pl – plik do zasilenia ręcznego
+    (panel administracyjny) i źródło zasobu przy imporcie XML."""
+    return Response(
+        content=wykaz_csv(_wykaz_rows()).encode("utf-8"),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment; filename=wykaz_defibrylatorow_aed.csv"},
+    )
+
+
+def _dane_gov_pl_xml_bytes() -> bytes:
+    # Portal przyjmuje w imporcie XML tylko adresy https – lokalnie Pulsmap jest
+    # wystawiony przez nginx portalu pod https://mcod.local/pulsmap
+    base = os.environ.get("PULSEMAP_DANE_GOV_PL_SOURCE_URL") or "https://mcod.local/pulsmap"
+    return dane_gov_pl_xml(base, today=now_pl().date().isoformat()).encode("utf-8")
+
+
+@app.api_route("/api/v1/export/dane-gov-pl.xml", methods=["GET", "HEAD"])
+def export_dane_gov_pl_xml():
+    """Plik XML dla źródła danych portalu (import XML, schemat 1.13 z elementem containsAedData)."""
+    return Response(content=_dane_gov_pl_xml_bytes(), media_type="application/xml")
+
+
+@app.api_route("/api/v1/export/dane-gov-pl.md5", methods=["GET", "HEAD"])
+@app.api_route("/api/v1/export/dane-gov-pl.xml.md5", methods=["GET", "HEAD"])
+def export_dane_gov_pl_xml_md5():
+    """Suma kontrolna MD5 pliku XML – portal pobiera ją razem z plikiem."""
+    return Response(content=hashlib.md5(_dane_gov_pl_xml_bytes()).hexdigest(), media_type="text/plain")
+
+
 @app.get("/api/v1/stats")
 async def api_stats():
     """Quality statistics for the dataset."""
@@ -379,9 +434,10 @@ _regions_cache: tuple[datetime, list[RegionStat]] | None = None
 
 
 def _invalidate_regions_cache() -> None:
-    """Po każdym imporcie ranking ma od razu uwzględnić nowe AED."""
-    global _regions_cache
+    """Po każdym imporcie ranking i wykaz AED mają od razu uwzględnić nowe AED."""
+    global _regions_cache, _wykaz_cache
     _regions_cache = None
+    _wykaz_cache = None
 
 
 @app.get("/api/v1/stats/regions", response_model=list[RegionStat])

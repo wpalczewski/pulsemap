@@ -18,6 +18,15 @@ Pulsmap łączy rozproszone dane o defibrylatorach AED w jeden ogólnopolski, ot
 | **Otwarte Dane** | Export CSV/JSON/GeoJSON + plik wzorcowy `.xlsx` z definicją schematu |
 | **ETL** | Deduplikacja przestrzenna Haversine (≤30m), merge źródeł, quality_score |
 
+## Wykaz AED w portalu dane.gov.pl
+
+Dane o AED trafiają **do portalu dane.gov.pl jako zasoby** – rozszerzamy kod
+źródłowy portalu o „Wykaz defibrylatorów AED” na wzór wykazu zasobów
+chronionych danych (DGA): zasilanie ręczne w panelu administracyjnym,
+automatyczne przez import XML (`containsAedData`) i codzienny wykaz zbiorczy.
+Pulsmap jest narzędziem dysponenta, które przygotowuje wykaz i plik XML.
+Łatki do kodu portalu i instrukcja: [integracja-dane-gov-pl](integracja-dane-gov-pl/README.md).
+
 ## Jak uruchomić projekt
 
 Potrzebny jest **Python 3.12 lub nowszy** albo **Docker**. Cała instalacja trwa

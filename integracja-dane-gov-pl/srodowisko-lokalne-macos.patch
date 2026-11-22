@@ -1,0 +1,205 @@
+diff --git a/docker-compose.local.yml b/docker-compose.local.yml
+index accee63..7569a81 100644
+--- a/docker-compose.local.yml
++++ b/docker-compose.local.yml
+@@ -123,7 +123,7 @@ services:
+       - "0:8001"
+     networks:
+       backend:
+-        ipv4_address: 172.18.18.101
++        ipv4_address: 172.28.18.101
+     mem_limit: 2000m
+     mem_swappiness: 0
+     profiles: []
+@@ -146,7 +146,7 @@ services:
+       - "mcod.api:app"
+     networks:
+       backend:
+-        ipv4_address: 172.18.18.102
++        ipv4_address: 172.28.18.102
+ 
+   mcod-local-cms:
+     <<: *local-container-service
+@@ -162,7 +162,7 @@ services:
+       - "0:8002"
+     networks:
+       backend:
+-        ipv4_address: 172.18.18.103
++        ipv4_address: 172.28.18.103
+ 
+   mcod-local-ws:
+     <<: *local-container-service
+@@ -181,7 +181,7 @@ services:
+       - "mcod.asgi:application"
+     networks:
+       backend:
+-        ipv4_address: 172.18.18.104
++        ipv4_address: 172.28.18.104
+ 
+   mcod-local-celery:
+     <<: *local-container-service
+@@ -199,7 +199,7 @@ services:
+       - /usr/local/bin/start-celery-local
+     networks:
+       backend:
+-        ipv4_address: 172.18.18.110 # unused, for clarity
++        ipv4_address: 172.28.18.110 # unused, for clarity
+ 
+   mcod-local-run:
+     <<: *local-container-with-tests
+diff --git a/docker-compose.yml b/docker-compose.yml
+index c77214f..f6198a4 100644
+--- a/docker-compose.yml
++++ b/docker-compose.yml
+@@ -14,7 +14,7 @@ services:
+       - .env
+     networks:
+       backend:
+-        ipv4_address: 172.18.18.18
++        ipv4_address: 172.28.18.18
+     ports:
+       - "5432:5432"
+ 
+@@ -34,7 +34,7 @@ services:
+       - "15692:15692"
+     networks:
+       backend:
+-        ipv4_address: 172.18.18.19
++        ipv4_address: 172.28.18.19
+ 
+   mcod-flower:
+     image: mher/flower
+@@ -60,7 +60,7 @@ services:
+       - "6379:6379"
+     networks:
+       backend:
+-        ipv4_address: 172.18.18.20
++        ipv4_address: 172.28.18.20
+ 
+   mcod-elasticsearch:
+     image: elasticsearch:6.8.23-mcod-1
+@@ -85,7 +85,7 @@ services:
+       - "9200:9200"
+     networks:
+       backend:
+-        ipv4_address: 172.18.18.21
++        ipv4_address: 172.28.18.21
+ 
+   mcod-smtp:
+     container_name: mcod-smtp
+@@ -96,7 +96,7 @@ services:
+       - "1025:1025"
+     networks:
+       backend:
+-        ipv4_address: 172.18.18.22
++        ipv4_address: 172.28.18.22
+     healthcheck:
+       test: "echo HELO | nc 127.0.0.1 1025"
+ 
+@@ -117,7 +117,7 @@ services:
+       - fuseki_vol_6:/var/lib/fuseki
+     networks:
+       backend:
+-        ipv4_address: 172.18.18.23
++        ipv4_address: 172.28.18.23
+ 
+   mcod-nginx:
+     container_name: mcod-nginx
+@@ -138,7 +138,7 @@ services:
+       - .env
+     networks:
+       backend:
+-        ipv4_address: 172.18.18.100
++        ipv4_address: 172.28.18.100
+         aliases:
+           # see *_URL environment variables and server_name directives in config files
+           - mcod.local
+@@ -148,7 +148,7 @@ services:
+           - forum.mcod.local
+           - mail.mcod.local
+     extra_hosts:
+-      - host.docker.internal:172.17.0.1
++      - host.docker.internal:host-gateway
+ 
+   mcod-discourse:
+     container_name: mcod-discourse
+@@ -176,7 +176,7 @@ services:
+       DISCOURSE_PASSWORD: ${DISCOURSE_PASSWORD}
+     networks:
+       backend:
+-        ipv4_address: 172.18.18.140
++        ipv4_address: 172.28.18.140
+     healthcheck:
+       test: "curl -f -s -o /dev/null -w '%{http_code}' http://localhost:3000/"
+ 
+@@ -195,7 +195,7 @@ services:
+       DISCOURSE_PORT: "3000"
+     networks:
+       backend:
+-        ipv4_address: 172.18.18.141
++        ipv4_address: 172.28.18.141
+     healthcheck:
+       test: "curl -f -s -o /dev/null -w '%{http_code}' http://localhost:3000/"
+ 
+@@ -207,7 +207,7 @@ networks:
+     ipam:
+       driver: default
+       config:
+-        - subnet: 172.18.18.0/24
++        - subnet: 172.28.18.0/24
+ 
+ volumes:
+   postgres_vol_17:
+diff --git a/env.sample b/env.sample
+index ba1174e..c6945af 100644
+--- a/env.sample
++++ b/env.sample
+@@ -93,14 +93,14 @@ RESOURCE_MAX_REPORT_SIZE=100000
+ # nginx proxy pass configuration, adjust to use on-host python services or dockerised
+ # common:
+ MCOD_NGINX_FRONTEND=http://host.docker.internal:4200
+-MCOD_NGINX_DISCOURSE=http://172.18.18.140:3000
+-MCOD_NGINX_MAILHOG=http://172.18.18.22:8025
++MCOD_NGINX_DISCOURSE=http://172.28.18.140:3000
++MCOD_NGINX_MAILHOG=http://172.28.18.22:8025
+ # for dockerised environment:
+-MCOD_NGINX_WS=http://172.18.18.104:8001
+-MCOD_NGINX_PN_APPS=http://172.18.18.101:8001
+-MCOD_NGINX_API=http://172.18.18.102:8000
+-MCOD_NGINX_ADMIN=http://172.18.18.101:8001
+-MCOD_NGINX_CMS=http://172.18.18.103:8002
++MCOD_NGINX_WS=http://172.28.18.104:8001
++MCOD_NGINX_PN_APPS=http://172.28.18.101:8001
++MCOD_NGINX_API=http://172.28.18.102:8000
++MCOD_NGINX_ADMIN=http://172.28.18.101:8001
++MCOD_NGINX_CMS=http://172.28.18.103:8002
+ # for bare metal:
+ # MCOD_NGINX_WS=http://host.docker.internal:8001
+ # MCOD_NGINX_PN_APPS=http://host.docker.internal:8001
+diff --git a/mcod/settings/local.py.sample b/mcod/settings/local.py.sample
+index 5308c29..8b2c7e0 100644
+--- a/mcod/settings/local.py.sample
++++ b/mcod/settings/local.py.sample
+@@ -7,7 +7,7 @@ TEMPLATES[0]["OPTIONS"]["debug"] = DEBUG  # noqa: F405
+ INTERNAL_IPS = (
+     "127.0.0.1",
+     "localhost",
+-    "172.18.18.100",
++    "172.28.18.100",
+ )  # needed to use debug processor in django templates
+ 
+ 
+@@ -23,13 +23,11 @@ NO_REPLY_EMAIL = "no-reply@mcod.local"
+ ELASTICSEARCH_DSL_INDEX_SETTINGS = {
+     "number_of_shards": 1,
+     "number_of_replicas": 0,
+-    "timeout": 1,
+ }
+ 
+ ELASTICSEARCH_HISTORIES_IDX_SETTINGS = {
+     "number_of_shards": 1,
+     "number_of_replicas": 0,
+-    "timeout": 1,
+ }
+ 
+ CELERY_TASK_ALWAYS_EAGER = False

@@ -1,0 +1,831 @@
+diff --git a/data/harvester/xml_import_otwarte_dane_1_13.xsd b/data/harvester/xml_import_otwarte_dane_1_13.xsd
+index a5de01e..6c26c28 100644
+--- a/data/harvester/xml_import_otwarte_dane_1_13.xsd
++++ b/data/harvester/xml_import_otwarte_dane_1_13.xsd
+@@ -670,6 +670,13 @@
+                     </xs:documentation>
+                 </xs:annotation>
+             </xs:element>
++            <xs:element name="containsAedData" type="xs:boolean" maxOccurs="1" minOccurs="0" default="false">
++                <xs:annotation>
++                    <xs:documentation>
++                        Czy zasób jest wykazem defibrylatorów AED dysponenta (akcja „Otwórz AED”)?
++                    </xs:documentation>
++                </xs:annotation>
++            </xs:element>
+             <xs:element name="specialSigns" maxOccurs="1" minOccurs="0">
+                 <xs:complexType>
+                     <xs:annotation>
+diff --git a/docker/app/Dockerfile b/docker/app/Dockerfile
+index 7ccbaca..06c87f8 100644
+--- a/docker/app/Dockerfile
++++ b/docker/app/Dockerfile
+@@ -58,6 +58,8 @@ ADD Pipfile.lock /usr/src/mcod_backend/Pipfile.lock
+ ADD Pipfile      /usr/src/mcod_backend/Pipfile
+ ADD django_suit-0.2.28-py3-none-any.whl      /usr/src/mcod_backend/django_suit-0.2.28-py3-none-any.whl
+ ADD hypereditor-0.1.0-py3-none-any.whl       /usr/src/mcod_backend/hypereditor-0.1.0-py3-none-any.whl
++# HackNation 2026: gotowa paczka gevent (kompilacja ze źródeł nie działa z Cython 3.2)
++RUN pip install --only-binary :all: gevent==24.2.1
+ RUN pipenv --verbose install --deploy --system && distrust-emudhra-roots
+ 
+ COPY ./docker/wait-for-it.sh /usr/local/bin/wait-for-it
+diff --git a/docker/nginx/config-templates/01-frontend.conf.template b/docker/nginx/config-templates/01-frontend.conf.template
+index afdf952..38a742f 100644
+--- a/docker/nginx/config-templates/01-frontend.conf.template
++++ b/docker/nginx/config-templates/01-frontend.conf.template
+@@ -15,6 +15,18 @@ server {
+   ssl_certificate ${MCOD_CERTS_PATH}/mcod.local.crt;
+   ssl_certificate_key ${MCOD_CERTS_PATH}/mcod.local.key;
+ 
++  # HackNation 2026 – Pulsmap (narzędzie dysponenta AED) jako źródło danych dla importu XML.
++  # Kontener „pulsmap” działa w sieci portalu; resolver pozwala uruchomić nginx bez niego.
++  location /pulsmap/ {
++    resolver 127.0.0.11 valid=10s;
++    set $pulsmap_upstream http://pulsmap:8000;
++    rewrite ^/pulsmap/(.*)$ /$1 break;
++    proxy_pass $pulsmap_upstream;
++    proxy_set_header Host $host;
++    proxy_set_header X-Forwarded-Proto https;
++    proxy_set_header X-Forwarded-Prefix /pulsmap;
++  }
++
+   location / {
+     proxy_pass ${MCOD_NGINX_FRONTEND};
+     proxy_pass_header Server;
+diff --git a/docker/tests/Dockerfile b/docker/tests/Dockerfile
+index 9120f25..a1f15cd 100644
+--- a/docker/tests/Dockerfile
++++ b/docker/tests/Dockerfile
+@@ -59,6 +59,8 @@ ADD Pipfile.lock /usr/src/mcod_backend/Pipfile.lock
+ ADD Pipfile      /usr/src/mcod_backend/Pipfile
+ ADD django_suit-0.2.28-py3-none-any.whl      /usr/src/mcod_backend/django_suit-0.2.28-py3-none-any.whl
+ ADD hypereditor-0.1.0-py3-none-any.whl       /usr/src/mcod_backend/hypereditor-0.1.0-py3-none-any.whl
++# HackNation 2026: gotowa paczka gevent (kompilacja ze źródeł nie działa z Cython 3.2)
++RUN pip install --only-binary :all: gevent==24.2.1
+ RUN pipenv --verbose install --deploy --system --dev && distrust-emudhra-roots
+ 
+ # not adding mcod project dir - this image is just a base for tests
+diff --git a/mcod/celeryapp.py b/mcod/celeryapp.py
+index 7e5ddce..777aa0c 100644
+--- a/mcod/celeryapp.py
++++ b/mcod/celeryapp.py
+@@ -90,6 +90,12 @@ def get_beat_schedule(
+             "options": default_options,
+             "schedule": crontab(minute=30, hour=3),
+         },
++        # HackNation 2026 – akcja „Otwórz AED”: codzienny wykaz zbiorczy defibrylatorów AED
++        "aed_main_resource_creation": {
++            "task": "mcod.resources.tasks.create_main_aed_resource_task",
++            "options": default_options,
++            "schedule": crontab(minute=45, hour=3),
++        },
+         "kibana-statistics": {
+             "task": "mcod.counters.tasks.kibana_statistics",
+             "options": default_options,
+diff --git a/mcod/harvester/serializers.py b/mcod/harvester/serializers.py
+index 8c491d9..3f39593 100644
+--- a/mcod/harvester/serializers.py
++++ b/mcod/harvester/serializers.py
+@@ -434,6 +434,8 @@ class XMLResourceSchema(ResourceMixin, XMLPreProcessedSchema):
+     has_high_value_data_from_ec_list = Bool(data_key="hasHighValueDataFromEuropeanCommissionList", allow_none=True, missing=None)
+     has_research_data = Bool(data_key="hasResearchData", allow_none=True, missing=None)
+     contains_protected_data = Bool(data_key="containsProtectedData", missing=False)
++    # HackNation 2026 – zasób jest wykazem defibrylatorów AED (zasilanie automatyczne)
++    contains_aed_data = Bool(data_key="containsAedData", missing=False)
+     supplements = Nested(XMLSupplementSchema, many=True)
+     is_auto_data_date = Bool(data_key="isAutoDataDate")
+     data_date_update_period = Str(
+diff --git a/mcod/resources/admin.py b/mcod/resources/admin.py
+index ccd65a4..d8ac611 100644
+--- a/mcod/resources/admin.py
++++ b/mcod/resources/admin.py
+@@ -354,6 +354,8 @@ class ResourceAdmin(HistoryMixin, ModelAdmin):  # MRO matters here for unescape
+             )
+             has_research_data = ["has_research_data"] if not obj.is_imported else ["has_research_data_info"]
+             contains_protected_data = ["contains_protected_data"] if not obj.is_imported else ["contains_protected_data_info"]
++            # HackNation 2026 – wykaz AED (dla zasobów z importu XML flaga pochodzi z pliku XML)
++            contains_aed_data = ["contains_aed_data"] if not obj.is_imported else []
+             extra_fields = []
+             if obj.type == RESOURCE_TYPE_WEBSITE or obj.forced_api_type:
+                 extra_fields = ["forced_api_type"]
+@@ -406,6 +408,7 @@ class ResourceAdmin(HistoryMixin, ModelAdmin):  # MRO matters here for unescape
+                             *has_high_value_data_from_ec_list,
+                             *has_research_data,
+                             *contains_protected_data,
++                            *contains_aed_data,
+                             "status",
+                             *special_signs,
+                             "show_tabular_view",
+@@ -532,6 +535,13 @@ class ResourceAdmin(HistoryMixin, ModelAdmin):  # MRO matters here for unescape
+                             "fields": ("contains_protected_data",),
+                         },
+                     ),
++                    (
++                        None,
++                        {
++                            "classes": ("suit-tab", "suit-tab-general"),
++                            "fields": ("contains_aed_data",),
++                        },
++                    ),
+                     (
+                         None,
+                         {
+diff --git a/mcod/resources/aed_constants.py b/mcod/resources/aed_constants.py
+new file mode 100644
+index 0000000..e97f509
+--- /dev/null
++++ b/mcod/resources/aed_constants.py
+@@ -0,0 +1,51 @@
++"""Wykaz defibrylatorów AED – zakres kolumn (akcja „Otwórz AED”, HackNation 2026).
++
++Mechanizm jest analogiczny do wykazu zasobów chronionych danych (DGA):
++
++* AED_COLUMNS opisuje strukturę pojedynczego wykazu AED, który publikuje
++  dysponent (zasób oznaczony flagą `contains_aed_data`),
++* MAIN_AED_REQUIRED_SOURCE_COLUMNS – kolumny, które muszą mieć wartości, aby
++  rekord trafił do wykazu zbiorczego,
++* MAIN_AED_COLUMNS – struktura ogólnopolskiego wykazu zbiorczego, budowanego
++  codziennie z wykazów wszystkich dysponentów.
++
++Kod do szafki AED nie jest częścią otwartego wykazu – publikujemy jedynie
++informację, czy szafka jest zamykana na kod.
++"""
++
++from typing import List
++
++AED_RESOURCE_EXTENSIONS: List[str] = ["xlsx", "xls", "csv"]
++
++AED_COLUMNS: List[str] = [
++    "Lp.",
++    "Identyfikator AED",
++    "Szerokość geograficzna",
++    "Długość geograficzna",
++    "Miejscowość",
++    "Ulica i numer",
++    "Kod pocztowy",
++    "Województwo",
++    "Opis lokalizacji",
++    "Wewnątrz budynku",
++    "Dostępność",
++    "Szafka zamykana na kod",
++    "Godziny dostępności",
++    "Status",
++    "Opiekun urządzenia",
++    "Telefon opiekuna",
++    "E-mail opiekuna",
++    "Data aktualizacji danych",
++]
++
++MAIN_AED_REQUIRED_SOURCE_COLUMNS: List[str] = [
++    "Identyfikator AED",
++    "Szerokość geograficzna",
++    "Długość geograficzna",
++    "Godziny dostępności",
++    "Status",
++]
++
++MAIN_AED_DISPONENT_COLUMN: str = "Nazwa dysponenta danych"
++
++MAIN_AED_COLUMNS: List[str] = ["Lp.", MAIN_AED_DISPONENT_COLUMN] + AED_COLUMNS[1:]
+diff --git a/mcod/resources/aed_utils.py b/mcod/resources/aed_utils.py
+new file mode 100644
+index 0000000..d91c65e
+--- /dev/null
++++ b/mcod/resources/aed_utils.py
+@@ -0,0 +1,268 @@
++"""Wykaz defibrylatorów AED – walidacja wykazów dysponentów i wykaz zbiorczy.
++
++Logika odpowiada wykazowi zasobów chronionych danych (DGA, `dga_utils.py`):
++
++1. Dysponent AED publikuje zasób oznaczony flagą `contains_aed_data`:
++   ręcznie (panel administracyjny – plik musi mieć kolumny `AED_COLUMNS`)
++   albo automatycznie (import XML z elementem `containsAedData`).
++2. Zadanie Celery `create_main_aed_resource_task` codziennie scala wszystkie
++   opublikowane wykazy AED w jeden ogólnopolski wykaz zbiorczy (XLSX),
++   publikowany jako zasób w zbiorze „Wykaz defibrylatorów AED – raport zbiorczy”.
++"""
++
++import datetime
++import logging
++import os
++from io import BytesIO
++from pathlib import Path
++from typing import TYPE_CHECKING, List, Optional, Union
++
++import pandas as pd
++import requests
++from django.apps import apps
++from django.conf import settings
++from django.core.exceptions import ObjectDoesNotExist
++from django.core.files.uploadedfile import InMemoryUploadedFile, SimpleUploadedFile
++from django.db import transaction
++from django.db.models import QuerySet
++
++from mcod.core.utils import save_df_to_xlsx
++from mcod.resources.aed_constants import (
++    AED_COLUMNS,
++    MAIN_AED_COLUMNS,
++    MAIN_AED_DISPONENT_COLUMN,
++    MAIN_AED_REQUIRED_SOURCE_COLUMNS,
++)
++from mcod.resources.dga_utils import (
++    create_df_from_dga_file,
++    get_remote_extension_if_correct_dga_content_type,
++    request_remote_dga,
++)
++
++if TYPE_CHECKING:
++    from mcod.resources.models import Dataset, Resource
++
++logger = logging.getLogger("mcod")
++
++
++class MainAEDResourceReadError(Exception):
++    """Nie udało się odczytać wykazu AED dysponenta."""
++
++
++# ── Walidacja pojedynczego wykazu AED (zasilanie ręczne i automatyczne) ──
++def create_df_from_aed_file(file: Union[InMemoryUploadedFile, BytesIO], extension: Optional[str]) -> Optional[pd.DataFrame]:
++    """DataFrame z pliku xlsx/xls/csv (te same reguły odczytu co dla DGA)."""
++    return create_df_from_dga_file(file, extension)
++
++
++def validate_aed_df_columns(df: pd.DataFrame) -> bool:
++    """True, jeśli kolumny mają dokładnie nazwy i kolejność z `AED_COLUMNS`."""
++    return [str(c).strip() for c in df.columns.to_list()] == AED_COLUMNS
++
++
++def validate_aed_file_columns(file: Union[InMemoryUploadedFile, BytesIO], extension: Optional[str]) -> bool:
++    try:
++        df: Optional[pd.DataFrame] = create_df_from_aed_file(file, extension)
++    except Exception as exc:  # noqa: BLE001 – każdy błąd odczytu oznacza zły plik
++        logger.exception(f"Error reading AED file: {exc}")
++        return False
++    finally:
++        if hasattr(file, "seek"):
++            file.seek(0)
++    return df is not None and validate_aed_df_columns(df)
++
++
++# ── Wykaz zbiorczy ────────────────────────────────────────────────────────
++def get_main_aed_resource() -> Optional["Resource"]:
++    AggregatedAEDInfo = apps.get_model("resources", "AggregatedAEDInfo")
++    info = AggregatedAEDInfo.objects.last()
++    return info.main_aed_resource if info else None
++
++
++def get_main_aed_dataset() -> Optional["Dataset"]:
++    AggregatedAEDInfo = apps.get_model("resources", "AggregatedAEDInfo")
++    info = AggregatedAEDInfo.objects.last()
++    if info and info.main_aed_dataset:
++        return info.main_aed_dataset
++    # Zbiór mógł powstać w nieudanym wcześniej uruchomieniu (zanim zapisano
++    # AggregatedAEDInfo) – używamy go zamiast tworzyć drugi o tej samej nazwie.
++    Dataset = apps.get_model("datasets", "Dataset")
++    return (
++        Dataset.objects.filter(
++            title=settings.MAIN_AED_DATASET_DEFAULT_TITLE,
++            organization_id=settings.MAIN_AED_DATASET_OWNER_ORGANIZATION_PK,
++            status="published",
++        )
++        .order_by("id")
++        .first()
++    )
++
++
++def get_all_aed_resources_sorted_by_organizations() -> QuerySet:
++    """Opublikowane, poprawnie zwalidowane wykazy AED dysponentów (bez wykazu zbiorczego)."""
++    Resource = apps.get_model("resources", "Resource")
++    main = get_main_aed_resource()
++    return (
++        Resource.objects.filter(
++            contains_aed_data=True,
++            status="published",
++            data_tasks_last_status="SUCCESS",
++            file_tasks_last_status="SUCCESS",
++        )
++        .exclude(id=main.pk if main else None)
++        .select_related("dataset__organization")
++        .order_by("dataset__organization__title")
++    )
++
++
++def _read_remote_aed_df(resource: "Resource") -> Optional[pd.DataFrame]:
++    """Wykaz AED zasilany automatycznie: odczyt bezpośrednio ze źródła (link zasobu)."""
++    url: Optional[str] = resource.link
++    if not url:
++        return None
++    try:
++        response: requests.models.Response = request_remote_dga(url)
++    except requests.exceptions.RequestException:
++        logger.exception(f"AED source not responding. Resource id: {resource.pk}; url: {url}")
++        return None
++    if response.status_code != 200:
++        return None
++    extension: Optional[str] = get_remote_extension_if_correct_dga_content_type(response)
++    if extension is None and url.lower().split("?")[0].endswith(".csv"):
++        extension = "csv"
++    if extension is None:
++        return None
++    return create_df_from_aed_file(BytesIO(response.content), extension)
++
++
++def get_main_aed_source_df(resource: "Resource") -> pd.DataFrame:
++    """Wiersze wykazu AED dysponenta w strukturze wykazu zbiorczego."""
++    df: Optional[pd.DataFrame] = None
++    try:
++        data = resource.tabular_data.table.read(keyed=True)
++        df = pd.DataFrame(data)
++    except Exception:  # noqa: BLE001 – brak widoku tabelarycznego → próbujemy źródła
++        df = None
++    if df is None or df.empty:
++        df = _read_remote_aed_df(resource)
++    if df is None:
++        raise MainAEDResourceReadError(f"Cannot read AED resource {resource.pk}")
++
++    df.columns = [str(c).strip() for c in df.columns]
++    missing: List[str] = [c for c in MAIN_AED_REQUIRED_SOURCE_COLUMNS if c not in df.columns]
++    if missing:
++        raise MainAEDResourceReadError(f"AED resource {resource.pk} is missing columns: {', '.join(missing)}")
++
++    df = df.reindex(columns=MAIN_AED_COLUMNS[2:])
++    required = df[MAIN_AED_REQUIRED_SOURCE_COLUMNS]
++    has_missing = (required.isna() | required.astype(str).apply(lambda s: s.str.strip()).eq("")).any(axis=1)
++    if has_missing.any():
++        logger.warning(f"AED resource {resource.pk}: skipping {int(has_missing.sum())} rows with empty required values.")
++        df = df[~has_missing]
++    return df
++
++
++def create_main_aed_df(resources: QuerySet) -> pd.DataFrame:
++    main_df = pd.DataFrame(columns=MAIN_AED_COLUMNS[1:])
++    ok = 0
++    for resource in resources:
++        try:
++            df = get_main_aed_source_df(resource)
++        except MainAEDResourceReadError as exc:
++            logger.error(f"Skipping AED source resource: {exc}")
++            continue
++        if df.empty:
++            continue
++        df.insert(0, MAIN_AED_DISPONENT_COLUMN, resource.institution.title)
++        main_df = pd.concat([main_df, df], ignore_index=True)
++        ok += 1
++    logger.info(f"AED resources aggregated: {ok}/{resources.count()}, rows: {len(main_df)}.")
++
++    # Ten sam AED zgłoszony przez kilku dysponentów – zostaje pierwszy wpis
++    main_df = main_df.drop_duplicates(subset=["Identyfikator AED"], keep="first")
++    main_df.insert(0, "Lp.", range(1, len(main_df) + 1))
++    return main_df
++
++
++def create_main_aed_file() -> Path:
++    directory = Path(settings.MAIN_AED_RESOURCE_XLSX_CREATION_ROOT)
++    directory.mkdir(parents=True, exist_ok=True)
++    today: str = datetime.datetime.now().strftime("%Y%m%d")
++    file_path = directory / f"{settings.MAIN_AED_XLSX_FILE_NAME_PREFIX} {today}.xlsx"
++    main_df = create_main_aed_df(get_all_aed_resources_sorted_by_organizations())
++    save_df_to_xlsx(df=main_df, file_path=file_path, sheet_name=settings.MAIN_AED_XLSX_WORKSHEET_NAME)
++    return file_path
++
++
++def create_main_aed_dataset() -> "Dataset":
++    Organization = apps.get_model("organizations", "Organization")
++    Dataset = apps.get_model("datasets", "Dataset")
++    Category = apps.get_model("categories", "Category")
++    Tag = apps.get_model("tags", "Tag")
++
++    try:
++        institution = Organization.objects.get(pk=settings.MAIN_AED_DATASET_OWNER_ORGANIZATION_PK)
++    except Organization.DoesNotExist:
++        raise ObjectDoesNotExist("Main AED owner institution not found.")
++
++    with transaction.atomic():
++        dataset = Dataset.objects.create(
++            title=settings.MAIN_AED_DATASET_DEFAULT_TITLE,
++            notes=settings.MAIN_AED_DATASET_DEFAULT_DESC,
++            organization=institution,
++            update_notification_recipient_email=settings.MAIN_AED_DATASET_UPDATE_NOTIFICATION_EMAIL,
++            has_dynamic_data=False,
++            has_high_value_data=False,
++            has_high_value_data_from_ec_list=False,
++            has_research_data=False,
++            update_frequency="daily",
++            status="published",
++        )
++        dataset.categories.set(Category.objects.filter(title__in=settings.MAIN_AED_DATASET_CATEGORIES_TITLES))
++        pl = settings.LANGUAGES[0][0]
++        dataset.tags.set([Tag.objects.get_or_create(name=n, language=pl)[0] for n in settings.MAIN_AED_DATASET_TAGS_NAMES])
++        dataset.save()
++    logger.info(f"Created main AED dataset {dataset.pk}.")
++    return dataset
++
++
++def create_main_aed_resource(file_path: Path) -> "Resource":
++    Resource = apps.get_model("resources", "Resource")
++    ResourceFile = apps.get_model("resources", "ResourceFile")
++
++    old = get_main_aed_resource()
++    dataset = get_main_aed_dataset() or create_main_aed_dataset()
++
++    with transaction.atomic(), open(file_path, "rb") as fh:
++        resource = Resource.objects.create(
++            title=old.title if old else settings.MAIN_AED_RESOURCE_DEFAULT_TITLE,
++            description=old.description if old else settings.MAIN_AED_RESOURCE_DEFAULT_DESC,
++            dataset=dataset,
++            has_dynamic_data=False,
++            has_high_value_data=False,
++            has_high_value_data_from_ec_list=False,
++            has_research_data=False,
++            # Wykaz zbiorczy nie jest wykazem dysponenta – nie może sam siebie scalać
++            contains_aed_data=False,
++            status="published",
++            data_date=datetime.datetime.today(),
++        )
++        mimetype = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
++        django_file = SimpleUploadedFile(name=os.path.basename(fh.name), content=fh.read(), content_type=mimetype)
++        # post_save uruchamia walidację pliku i budowę widoku tabelarycznego
++        ResourceFile.objects.create(resource=resource, is_main=True, file=django_file)
++    return resource
++
++
++def update_aggr_aed_info_and_delete_old_main_aed(new_resource: "Resource") -> None:
++    AggregatedAEDInfo = apps.get_model("resources", "AggregatedAEDInfo")
++    info = AggregatedAEDInfo.objects.last()
++    old = info.main_aed_resource if info else None
++    with transaction.atomic():
++        if info:
++            info.resource = new_resource
++            info.save()
++        else:
++            AggregatedAEDInfo.objects.create(resource=new_resource)
++        if old and old.pk != new_resource.pk:
++            old.delete()
+diff --git a/mcod/resources/forms.py b/mcod/resources/forms.py
+index fd4a5b7..b493464 100644
+--- a/mcod/resources/forms.py
++++ b/mcod/resources/forms.py
+@@ -30,6 +30,8 @@ from mcod.lib.widgets import (
+ )
+ from mcod.organizations.models import Organization
+ from mcod.regions.fields import RegionsMultipleChoiceField
++from mcod.resources.aed_constants import AED_COLUMNS, AED_RESOURCE_EXTENSIONS
++from mcod.resources.aed_utils import validate_aed_file_columns
+ from mcod.resources.archives import is_password_protected_archive_file
+ from mcod.resources.dga_constants import (
+     ALLOWED_DGA_INSTITUTIONS,
+@@ -264,6 +266,20 @@ class ResourceForm(forms.ModelForm, HighValueDataFormValidatorMixin):
+         ),
+         widget=CheckboxSelect(attrs={"class": "inline"}),
+     )
++    # HackNation 2026 – akcja „Otwórz AED”
++    contains_aed_data = forms.ChoiceField(
++        required=False,
++        initial=False,
++        label="Wykaz defibrylatorów AED",
++        choices=[(True, _("Yes")), (False, _("No"))],
++        help_text=(
++            "Wskazanie TAK oznacza, że zasób jest wykazem defibrylatorów AED tego dysponenta. "
++            "Opublikowane wykazy są codziennie scalane w ogólnopolski wykaz zbiorczy "
++            "„Wykaz defibrylatorów AED – raport zbiorczy”.<br><br>Plik (xlsx, xls lub csv) musi mieć "
++            "kolumny w kolejności: " + ", ".join(AED_COLUMNS) + "."
++        ),
++        widget=CheckboxSelect(attrs={"class": "inline"}),
++    )
+     confirm_save = forms.CharField(required=False, widget=forms.HiddenInput())
+ 
+     def __init__(self, *args, **kwargs):
+@@ -333,11 +349,35 @@ class ResourceForm(forms.ModelForm, HighValueDataFormValidatorMixin):
+             if not is_main_dga_resource and organization:
+                 self._remove_dga_flag_from_current_dga_resource_if_needed(data, organization)
+ 
++        # HackNation 2026 – wykaz defibrylatorów AED (zasilanie ręczne): sprawdzenie zakresu kolumn
++        if data.get("contains_aed_data") in (True, "True"):
++            aed_file: Optional[InMemoryUploadedFile] = data.get("file")
++            if aed_file:
++                self._validate_aed_file(aed_file)
++            elif creating_resource:
++                self.add_error(
++                    "contains_aed_data",
++                    "Wykaz defibrylatorów AED należy dodać jako plik xlsx, xls lub csv z dysku.",
++                )
++
+         self.validate_high_value_data_flags_conflict(data)
+         if organization:
+             self._validate_high_value_data_from_ec_list_organization(data, organization)
+         return data
+ 
++    def _validate_aed_file(self, file: InMemoryUploadedFile) -> None:
++        extension: Optional[str] = guess_extension(file.content_type or "") or os.path.splitext(file.name)[1]
++        extension = (extension or "").lstrip(".").lower()
++        if extension not in AED_RESOURCE_EXTENSIONS:
++            self.add_error("file", "Wykaz defibrylatorów AED musi być plikiem w formacie xlsx, xls lub csv.")
++            return
++        if not validate_aed_file_columns(file, extension):
++            self.add_error(
++                "file",
++                "Zasób oznaczony jako wykaz defibrylatorów AED może zawierać wyłącznie kolumny "
++                "o nazwach i w kolejności: " + ", ".join(AED_COLUMNS) + ".",
++            )
++
+     def _validate_data_date(self, data: dict) -> None:
+         data_date_err = Resource.get_auto_data_date_errors(data)
+         if data_date_err:
+diff --git a/mcod/resources/management/commands/aed_demo_setup.py b/mcod/resources/management/commands/aed_demo_setup.py
+new file mode 100644
+index 0000000..b88800e
+--- /dev/null
++++ b/mcod/resources/management/commands/aed_demo_setup.py
+@@ -0,0 +1,95 @@
++"""HackNation 2026 – przygotowanie lokalnego portalu do pokazu wykazu defibrylatorów AED.
++
++Zakłada (idempotentnie):
++* instytucję-właściciela wykazu zbiorczego (Ministerstwo Cyfryzacji),
++* kategorię „Zdrowie” (kod HEAL, używany w imporcie XML),
++* instytucję dysponenta AED (demo),
++* źródło danych typu import XML wskazujące na plik XML generowany przez Pulsmap
++  (zasilanie automatyczne wykazu AED).
++
++Użycie:
++    python manage.py aed_demo_setup [--xml-url https://mcod.local/pulsmap/api/v1/export/dane-gov-pl.xml]
++"""
++
++from django.apps import apps
++from django.conf import settings
++from django.core.management.base import BaseCommand
++
++ORG_COMMON = {
++    "status": "published",
++    "description": "<p>Instytucja utworzona na potrzeby pokazu wykazu defibrylatorów AED (HackNation 2026).</p>",
++    "postal_code": "00-001",
++    "city": "Warszawa",
++    "street_type": "ul.",
++    "street": "Królewska",
++    "street_number": "27",
++    "email": "admin@mcod.local",
++    "epuap": "https://epuap.gov.pl/",
++    "tel": "0048223456789",
++    "website": "https://mcod.local/",
++}
++
++
++class Command(BaseCommand):
++    help = "Przygotowuje lokalny portal do pokazu wykazu defibrylatorów AED (HackNation 2026)."
++
++    def add_arguments(self, parser):
++        parser.add_argument("--xml-url", default="https://mcod.local/pulsmap/api/v1/export/dane-gov-pl.xml")
++
++    def handle(self, *args, **options):
++        Organization = apps.get_model("organizations", "Organization")
++        Category = apps.get_model("categories", "Category")
++        DataSource = apps.get_model("harvester", "DataSource")
++        User = apps.get_model("users", "User")
++        admin = User.objects.filter(is_superuser=True).order_by("id").first()
++
++        owner_pk = int(settings.MAIN_AED_DATASET_OWNER_ORGANIZATION_PK)
++        owner, created = Organization.raw.get_or_create(
++            pk=owner_pk,
++            defaults={
++                **ORG_COMMON,
++                "title": "Ministerstwo Cyfryzacji",
++                "slug": "ministerstwo-cyfryzacji",
++                "abbreviation": "MC",
++                "institution_type": "state",
++                "regon": "147100154",
++            },
++        )
++        self.stdout.write(f"Właściciel wykazu zbiorczego: {owner.title} (pk={owner.pk}, nowa={created})")
++
++        category, created = Category.raw.get_or_create(
++            code="HEAL",
++            defaults={"title": "Zdrowie", "slug": "zdrowie", "status": "published", "color": "#00875A"},
++        )
++        self.stdout.write(f"Kategoria: {category.title} ({category.code}, nowa={created})")
++
++        disponent, created = Organization.raw.get_or_create(
++            slug="dysponent-aed-pulsmap-demo",
++            defaults={
++                **ORG_COMMON,
++                "title": "Dysponent AED – Pulsmap (demo)",
++                "abbreviation": "AED",
++                "institution_type": "local",
++                "regon": "092355640",
++            },
++        )
++        self.stdout.write(f"Dysponent AED: {disponent.title} (pk={disponent.pk}, nowy={created})")
++
++        source, created = DataSource.raw.get_or_create(
++            name="Pulsmap – wykaz defibrylatorów AED (import XML)",
++            defaults={
++                "description": "Automatyczne zasilanie wykazu defibrylatorów AED z pliku XML generowanego przez Pulsmap.",
++                "source_type": "xml",
++                "xml_url": options["xml_url"],
++                "frequency_in_days": 1,
++                "status": "active",
++                "institution_type": "local",
++                "emails": "admin@mcod.local",
++                "organization": disponent,
++                "created_by": admin,
++                "modified_by": admin,
++            },
++        )
++        if not created and source.xml_url != options["xml_url"]:
++            DataSource.raw.filter(pk=source.pk).update(xml_url=options["xml_url"])
++        self.stdout.write(f"Źródło danych: {source.name} (pk={source.pk}, nowe={created}) → {options['xml_url']}")
+diff --git a/mcod/resources/migrations/0076_aed_wykaz.py b/mcod/resources/migrations/0076_aed_wykaz.py
+new file mode 100644
+index 0000000..a9f01f2
+--- /dev/null
++++ b/mcod/resources/migrations/0076_aed_wykaz.py
+@@ -0,0 +1,28 @@
++# Generated by Django 2.2.9 on 2026-11-22 09:13
++
++from django.db import migrations, models
++import django.db.models.deletion
++
++
++class Migration(migrations.Migration):
++
++    dependencies = [
++        ('resources', '0075_add_performance_indexes'),
++    ]
++
++    operations = [
++        migrations.AddField(
++            model_name='resource',
++            name='contains_aed_data',
++            field=models.BooleanField(default=False, verbose_name='Wykaz defibrylatorów AED'),
++        ),
++        migrations.CreateModel(
++            name='AggregatedAEDInfo',
++            fields=[
++                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
++                ('created_at', models.DateTimeField(auto_now_add=True)),
++                ('updated_at', models.DateTimeField(auto_now=True)),
++                ('resource', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, to='resources.Resource')),
++            ],
++        ),
++    ]
+diff --git a/mcod/resources/models.py b/mcod/resources/models.py
+index e15c616..08d7380 100644
+--- a/mcod/resources/models.py
++++ b/mcod/resources/models.py
+@@ -577,6 +577,8 @@ class Resource(ExtendedModel):
+     automatic_data_date_end = models.DateField(verbose_name=_("Data date end date update"), blank=True, null=True)
+     endless_data_date_update = models.BooleanField(verbose_name=_("Endless data date update"), default=False)
+     contains_protected_data = models.BooleanField(verbose_name=_("Contains protected data list"), default=False)
++    # HackNation 2026 – akcja „Otwórz AED”: zasób jest wykazem defibrylatorów AED dysponenta
++    contains_aed_data = models.BooleanField(verbose_name="Wykaz defibrylatorów AED", default=False)
+ 
+     def __str__(self):
+         return self.title
+@@ -1653,6 +1655,31 @@ class AggregatedDGAInfo(models.Model):
+         return None
+ 
+ 
++class AggregatedAEDInfo(models.Model):
++    """Wskaźnik na aktualny ogólnopolski wykaz zbiorczy defibrylatorów AED (analogicznie do AggregatedDGAInfo)."""
++
++    created_at = models.DateTimeField(auto_now_add=True)
++    updated_at = models.DateTimeField(auto_now=True)
++    resource = models.ForeignKey(Resource, on_delete=models.SET_NULL, null=True)
++
++    def save(self, *args, **kwargs):
++        if not self.id and AggregatedAEDInfo.objects.exists():
++            raise ValidationError("There can be only one AggregatedAEDInfo instance")
++        return super().save(*args, **kwargs)
++
++    @property
++    def main_aed_resource(self) -> Optional[Resource]:
++        if self.resource and self.resource.is_published and not self.resource.is_removed:
++            return self.resource
++        return None
++
++    @property
++    def main_aed_dataset(self) -> Optional[Dataset]:
++        if self.resource and self.resource.dataset.is_published and not self.resource.dataset.is_removed:
++            return self.resource.dataset
++        return None
++
++
+ class Chart(ExtendedModel):
+     SIGNALS_MAP = {
+         "updated": (update_chart_resource,),
+diff --git a/mcod/resources/tasks/__init__.py b/mcod/resources/tasks/__init__.py
+index 3309d6b..0f01b2f 100644
+--- a/mcod/resources/tasks/__init__.py
++++ b/mcod/resources/tasks/__init__.py
+@@ -1,3 +1,4 @@
++from mcod.resources.tasks.aed import create_main_aed_resource_task  # noqa: F401 – HackNation 2026
+ from mcod.resources.tasks.dga import clean_dga_temp_directory, create_main_dga_resource_task
+ from mcod.resources.tasks.entrypoint_res import entrypoint_process_resource_validation_task
+ from mcod.resources.tasks.entrypoint_res_file import (
+diff --git a/mcod/resources/tasks/aed.py b/mcod/resources/tasks/aed.py
+new file mode 100644
+index 0000000..7d4d608
+--- /dev/null
++++ b/mcod/resources/tasks/aed.py
+@@ -0,0 +1,60 @@
++import logging
++
++from django.apps import apps
++
++from mcod.core.tasks import extended_shared_task
++from mcod.resources.aed_utils import (
++    create_main_aed_file,
++    create_main_aed_resource,
++    update_aggr_aed_info_and_delete_old_main_aed,
++)
++from mcod.resources.dga_utils import (
++    FailedValidationException,
++    PendingValidationException,
++    check_all_resource_validations_status,
++)
++
++logger = logging.getLogger("mcod")
++
++
++@extended_shared_task(
++    max_retries=5,
++    atomic=False,
++    retry_countdown=20,
++    retry_on_errors=(PendingValidationException,),
++    bind=True,
++    name="mcod.resources.tasks.create_main_aed_resource_task",
++)
++def create_main_aed_resource_task(self, resource_pk: int = None) -> None:
++    """
++    Buduje ogólnopolski wykaz zbiorczy defibrylatorów AED (analogicznie do
++    `create_main_dga_resource_task`):
++
++    1. scala opublikowane wykazy AED dysponentów w plik XLSX,
++    2. publikuje go jako nowy zasób w zbiorze „Wykaz defibrylatorów AED –
++       raport zbiorczy” (zbiór jest tworzony przy pierwszym uruchomieniu),
++    3. czeka na zakończenie walidacji pliku (widok tabelaryczny),
++    4. podmienia poprzedni wykaz zbiorczy na nowy.
++    """
++    Resource = apps.get_model("resources", "Resource")
++
++    if resource_pk is None:
++        logger.info("Main AED: step 1/2 – creating xlsx file and resource.")
++        file_path = create_main_aed_file()
++        resource_pk = create_main_aed_resource(file_path).pk
++
++    resource = Resource.objects.get(pk=resource_pk)
++    try:
++        logger.info("Main AED: step 2/2 – checking validations of resource %s.", resource_pk)
++        check_all_resource_validations_status(resource)
++    except PendingValidationException:
++        if self.request.retries >= self.max_retries:
++            resource.delete()
++            raise
++        raise self.retry(kwargs={"resource_pk": resource_pk}, countdown=20)
++    except FailedValidationException:
++        resource.delete()
++        raise
++
++    update_aggr_aed_info_and_delete_old_main_aed(resource)
++    logger.info("Main AED resource %s published.", resource_pk)
+diff --git a/mcod/settings/base.py b/mcod/settings/base.py
+index a88e90b..d6fbebf 100644
+--- a/mcod/settings/base.py
++++ b/mcod/settings/base.py
+@@ -970,6 +970,7 @@ CELERY_TASK_ROUTES = {
+     "mcod.submissions.tasks.generate_statistical_report_for_all_submissions_task": {"queue": "reports"},
+     "mcod.resources.tasks.check_link_protocol": {"queue": "resources"},
+     "mcod.resources.tasks.create_main_dga_resource_task": {"queue": "resources"},
++    "mcod.resources.tasks.create_main_aed_resource_task": {"queue": "resources"},
+     "mcod.resources.tasks.delete_es_resource_tabular_data_index": {"queue": "indexing_data"},
+     "mcod.resources.tasks.delete_es_resource_tabular_data_indexes_for_organization": {"queue": "indexing_data"},
+     "mcod.resources.tasks.entrypoint_process_resource_file_validation_task": {"queue": "resources"},
+@@ -1747,6 +1748,30 @@ MAIN_DGA_DATASET_TAGS_NAMES = [
+     "chronione dane",
+ ]
+ 
++# HackNation 2026 – akcja „Otwórz AED”: ogólnopolski wykaz zbiorczy defibrylatorów AED
++# (mechanizm analogiczny do wykazu zbiorczego DGA, zadanie create_main_aed_resource_task)
++MAIN_AED_RESOURCE_XLSX_CREATION_ROOT = str(ROOT_DIR.path(MEDIA_ROOT, "main_aed"))
++MAIN_AED_DATASET_OWNER_ORGANIZATION_PK = env(
++    "MAIN_AED_DATASET_OWNER_ORGANIZATION_PK", default=MAIN_DGA_DATASET_OWNER_ORGANIZATION_PK
++)
++MAIN_AED_RESOURCE_DEFAULT_TITLE = "Wykaz defibrylatorów AED"
++MAIN_AED_RESOURCE_DEFAULT_DESC = (
++    "Ogólnopolski wykaz automatycznych defibrylatorów zewnętrznych (AED) – raport zbiorczy "
++    "z wykazów publikowanych przez dysponentów urządzeń. Kod do szafki AED nie jest "
++    "publikowany; wykaz zawiera jedynie informację, czy szafka jest zamykana na kod."
++)
++MAIN_AED_DATASET_DEFAULT_TITLE = "Wykaz defibrylatorów AED – raport zbiorczy"
++MAIN_AED_DATASET_DEFAULT_DESC = (
++    "Akcja „Otwórz AED”. Zbiór zawiera aktualizowany codziennie ogólnopolski wykaz defibrylatorów AED, "
++    "scalony z wykazów publikowanych w portalu przez dysponentów urządzeń (ręcznie w panelu "
++    "administracyjnym lub automatycznie przez import XML). Wzorcowy zakres danych określa kolumny wykazu."
++)
++MAIN_AED_XLSX_FILE_NAME_PREFIX = "Wykaz defibrylatorów AED – wykaz zbiorczy"
++MAIN_AED_XLSX_WORKSHEET_NAME = "Arkusz 1"
++MAIN_AED_DATASET_UPDATE_NOTIFICATION_EMAIL = env("MAIN_AED_DATASET_UPDATE_NOTIFICATION_EMAIL", default="admin@mcod.local")
++MAIN_AED_DATASET_CATEGORIES_TITLES = ["Zdrowie"]
++MAIN_AED_DATASET_TAGS_NAMES = ["AED", "defibrylatory", "wykaz defibrylatorów AED", "Otwórz AED"]
++
+ PASSWORD_RESET_PATH = "/user/reset-password/%s/"
+ EMAIL_VALIDATION_PATH = "/user/verify-email/%s/"
+ 
