@@ -51,14 +51,17 @@ def test_rescue_event_rejects_unknown_values(client):
     assert client.post(f"/api/v1/rescue/{token}/event", json={"event": "en_route"}).status_code == 200
 
 
-def test_schema_xlsx_has_no_real_codes(client):
+def test_schema_xlsx_matches_portal_wykaz(client):
     from io import BytesIO
     from openpyxl import load_workbook
+    from app.wykaz_aed import WYKAZ_COLUMNS
     wb = load_workbook(BytesIO(client.get("/api/v1/export/schema-xlsx").content))
-    ws = wb["Przykladowe_Dane"]
-    header = [c.value for c in ws[1]]
-    col = header.index("access_code")
-    assert all(row[col] is None for row in ws.iter_rows(min_row=2, values_only=True))
+    spec = wb["Zakres_danych"]
+    assert [r[0] for r in spec.iter_rows(min_row=2, values_only=True)] == WYKAZ_COLUMNS
+    tpl = wb["Wykaz_AED"]
+    assert [c.value for c in tpl[1]] == WYKAZ_COLUMNS
+    # kod do szafki nie jest częścią otwartego wykazu
+    assert not any(str(c.value).lower() in ("access_code", "kod do szafki", "kod szafki") for c in tpl[1])
 
 
 def test_public_aeds_have_hours_status_but_exports_dont(client):

@@ -158,3 +158,78 @@ def dane_gov_pl_xml(base_url: str, today: str) -> str:
     </dataset>
 </ns2:datasets>
 """
+
+
+# ── Wzorcowy zakres danych (XLSX) – ten sam zakres, który sprawdza portal ──
+WYKAZ_SPEC: list[tuple[str, str, str, str, str, str]] = [
+    # kolumna, typ, obowiązkowa, opis, przykład, dozwolone wartości / format
+    ("Lp.", "liczba całkowita", "Tak", "Numer porządkowy wiersza", "1", "1, 2, 3…"),
+    ("Identyfikator AED", "tekst", "Tak", "Stały, unikalny identyfikator urządzenia nadany przez dysponenta", "aed-byd-0001", "unikalny w wykazie; nie zmienia się przy aktualizacji"),
+    ("Szerokość geograficzna", "liczba dziesiętna", "Tak", "Szerokość geograficzna lokalizacji AED (WGS84)", "53.123950", "49.0–54.9, kropka dziesiętna"),
+    ("Długość geograficzna", "liczba dziesiętna", "Tak", "Długość geograficzna lokalizacji AED (WGS84)", "18.000550", "14.1–24.2, kropka dziesiętna"),
+    ("Miejscowość", "tekst", "Nie", "Nazwa miejscowości", "Bydgoszcz", ""),
+    ("Ulica i numer", "tekst", "Nie", "Ulica i numer budynku", "Stary Rynek 1", ""),
+    ("Kod pocztowy", "tekst", "Nie", "Kod pocztowy", "85-105", "NN-NNN"),
+    ("Województwo", "tekst", "Nie", "Województwo, w którym stoi AED", "kujawsko-pomorskie", "nazwa województwa małymi literami"),
+    ("Opis lokalizacji", "tekst", "Nie (zalecane)", "Dokładne miejsce w budynku – kluczowe dla świadka", "Parter, przy głównej klatce schodowej obok windy", ""),
+    ("Wewnątrz budynku", "tak/nie", "Tak", "Czy AED jest wewnątrz budynku", "TAK", "TAK, NIE"),
+    ("Dostępność", "słownik", "Tak", "Kto ma dostęp do AED", "publiczna", "publiczna, dla klientów, za zgodą właściciela, ograniczona"),
+    ("Szafka zamykana na kod", "tak/nie", "Tak", "Czy szafka jest zamykana na kod (sam kod NIE jest publikowany)", "NIE", "TAK, NIE"),
+    ("Godziny dostępności", "tekst", "Tak", "Godziny dostępności w formacie OSM opening_hours", "Mo-Fr 08:00-18:00; Sa 09:00-14:00", "24/7 lub składnia opening_hours (Mo, Tu, We, Th, Fr, Sa, Su, PH)"),
+    ("Status", "słownik", "Tak", "Stan urządzenia", "aktywny", "aktywny, czasowo niedostępny, uszkodzony, niezweryfikowany"),
+    ("Opiekun urządzenia", "tekst", "Nie (zalecane)", "Instytucja lub osoba odpowiedzialna za AED", "Urząd Miasta Bydgoszczy", ""),
+    ("Telefon opiekuna", "tekst", "Nie (zalecane)", "Telefon kontaktowy opiekuna", "+48 52 000 00 00", ""),
+    ("E-mail opiekuna", "tekst", "Nie (zalecane)", "Adres e-mail opiekuna", "aed@example.pl", ""),
+    ("Data aktualizacji danych", "data", "Tak", "Data ostatniej weryfikacji lub aktualizacji rekordu", "2026-11-20", "RRRR-MM-DD"),
+]
+
+
+def wzorcowy_zakres_xlsx(sample_rows: list[dict]) -> io.BytesIO:
+    """Plik XLSX: opis zakresu danych, szablon wykazu z przykładami i zasady zasilania portalu."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+
+    head_font, head_fill = Font(bold=True, color="FFFFFF"), PatternFill("solid", fgColor="00875A")
+    wb = Workbook()
+
+    ws = wb.active
+    ws.title = "Zakres_danych"
+    ws.append(["Kolumna", "Typ", "Obowiązkowa", "Opis", "Przykład", "Dozwolone wartości / format"])
+    for row in WYKAZ_SPEC:
+        ws.append(list(row))
+    for col, width in zip("ABCDEF", (28, 18, 16, 60, 36, 56)):
+        ws.column_dimensions[col].width = width
+
+    tpl = wb.create_sheet("Wykaz_AED")
+    tpl.append(WYKAZ_COLUMNS)
+    for r in sample_rows:
+        tpl.append([r.get(c, "") for c in WYKAZ_COLUMNS])
+    for i in range(len(WYKAZ_COLUMNS)):
+        tpl.column_dimensions[chr(ord("A") + i)].width = 22
+
+    info = wb.create_sheet("Zasady")
+    for line in [
+        "Wzorcowy zakres danych – Wykaz defibrylatorów AED (akcja „Otwórz AED”)",
+        "",
+        "1. Arkusz „Wykaz_AED” to szablon: nazwy i kolejność kolumn muszą pozostać bez zmian – portal dane.gov.pl odrzuca wykaz o innym układzie.",
+        "2. Zasilanie ręczne: w panelu dane.gov.pl dodaj zasób (xlsx, xls lub csv) i zaznacz „Wykaz defibrylatorów AED: Tak”.",
+        "3. Zasilanie automatyczne: źródło danych typu import XML (schemat 1.13), zasób z elementem <containsAedData>true</containsAedData>.",
+        "4. Portal codziennie scala wykazy wszystkich dysponentów w zbiór „Wykaz defibrylatorów AED – raport zbiorczy”.",
+        "5. Kod do szafki AED NIE jest publikowany – podaj tylko, czy szafka jest zamykana na kod.",
+        "6. Format: UTF-8, współrzędne WGS84 z kropką dziesiętną, daty RRRR-MM-DD, jeden wiersz = jedno urządzenie.",
+        "Licencja danych: CC0 1.0.",
+    ]:
+        info.append([line])
+    info.column_dimensions["A"].width = 130
+
+    for sheet in (ws, tpl):
+        for cell in sheet[1]:
+            cell.font, cell.fill = head_font, head_fill
+            cell.alignment = Alignment(wrap_text=True, vertical="center")
+        sheet.freeze_panes = "A2"
+    info["A1"].font = Font(bold=True, size=13)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf

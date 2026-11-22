@@ -30,7 +30,7 @@ from app.etl import (
 )
 from app.opening_hours import Availability, availability, format_pl
 from app.regions import RegionStat, assign_voivodeship, load_voivodeships, region_stats
-from app.wykaz_aed import aed_to_wykaz_row, dane_gov_pl_xml, wykaz_csv
+from app.wykaz_aed import aed_to_wykaz_row, dane_gov_pl_xml, wykaz_csv, wzorcowy_zakres_xlsx
 from app.portal_sync import sync_from_portal
 import httpx
 from app.dispatch import ScanResult, scan_radius
@@ -223,8 +223,8 @@ async def export_geojson():
 @app.get("/api/v1/export/schema-xlsx")
 async def export_schema_xlsx():
     """Download wzorcowy_zakres_danych_aed.xlsx."""
-    db = get_db()
-    buf = generate_schema_xlsx(db)
+    # Zakres danych wykazu defibrylatorów AED – identyczny z tym, który sprawdza portal dane.gov.pl
+    buf = wzorcowy_zakres_xlsx(_wykaz_rows()[:5])
     return StreamingResponse(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
