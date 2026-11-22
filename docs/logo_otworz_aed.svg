@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+    <!-- Tło sygnetu / Kontener zaokrąglony -->
+    <rect width="120" height="120" rx="28" fill="#00875A" />
+    
+    <!-- Otwarty pałąk kłódki (symbol dostępności i otwarcia szafki) -->
+    <path d="M40 55 V38.75 C40 27.7 48.95 18.75 60 18.75 C71.05 18.75 80 27.7 81 38.75" 
+          fill="none" stroke="#FFFFFF" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+    
+    <!-- Korpus kłódki -->
+    <rect x="26.25" y="53.75" width="67.5" height="45" rx="11.25" fill="#FFFFFF" />
+    
+    <!-- Linia życia / rytm EKG wewnątrz korpusu -->
+    <path d="M33.75 77.5 H48.75 L54.75 64.5 L63.25 88 L70.25 70 L74.75 77.5 H86.25" 
+          fill="none" stroke="#00875A" stroke-width="5.75" stroke-linecap="round" stroke-linejoin="round" />
+</svg>

@@ -1,24 +1,24 @@
-# ❤️‍🩹 Pulsmap – Ogólnopolska Baza Defibrylatorów AED
+# Pulsmap – Ogólnopolska Baza Defibrylatorów AED
 
 > **HackNation 2026 · Misja AED – Dane na ratunek**
 > Ministerstwo Cyfryzacji
 
-## 🎯 Cel projektu
+## Cel projektu
 
 Pulsmap łączy rozproszone dane o defibrylatorach AED w jeden ogólnopolski, otwarty, odczytywalny maszynowo zbiór danych gotowy do publikacji w portalu **dane.gov.pl**, z modułem operacyjnym **Tryb Dyspozytora 112**.
 
-## ✨ Kluczowe funkcje
+## Kluczowe funkcje
 
 | Moduł | Opis |
 |-------|------|
-| 🗺️ **Mapa AED** | Interaktywna mapa Leaflet z klastrowaniem, kolorowaniem i filtrami statusu |
-| 🚨 **Dyspozytor 112** | Symulacja zgłoszenia → najbliższe *otwarte* AED z filtrowaniem po godzinach, QR code, SMS |
-| 📱 **Ekran Świadka** | Ultralekki widok mobilny `/go/{token}` – Zero-Install, WCAG AAA, nawigacja do AED |
-| 📋 **Portal Dysponenta** | Formularz zgłoszenia + import CSV/JSON z walidacją i raportem |
-| 📊 **Otwarte Dane** | Export CSV/JSON/GeoJSON + plik wzorcowy `.xlsx` z definicją schematu |
-| 🔄 **ETL** | Deduplikacja przestrzenna Haversine (≤30m), merge źródeł, quality_score |
+| **Mapa AED** | Interaktywna mapa Leaflet z klastrowaniem, kolorowaniem i filtrami statusu |
+| **Dyspozytor 112** | Symulacja zgłoszenia → najbliższe *otwarte* AED z filtrowaniem po godzinach, QR code, SMS |
+| **Ekran Świadka** | Ultralekki widok mobilny `/go/{token}` – Zero-Install, WCAG AAA, nawigacja do AED |
+| **Portal Dysponenta** | Formularz zgłoszenia + import CSV/JSON z walidacją i raportem |
+| **Otwarte Dane** | Export CSV/JSON/GeoJSON + plik wzorcowy `.xlsx` z definicją schematu |
+| **ETL** | Deduplikacja przestrzenna Haversine (≤30m), merge źródeł, quality_score |
 
-## 🚀 Uruchomienie
+## Uruchomienie
 
 ### Lokalne (bez Dockera)
 
@@ -69,21 +69,21 @@ pip install pytest
 pytest -q
 ```
 
-## 🔒 Dane niepubliczne
+## Dane niepubliczne
 
 Kod do szafki AED (`access_code`) **nie jest publikowany** w otwartym zbiorze
 (`/api/v1/aeds`, eksporty CSV/JSON/GeoJSON) – zastępuje go pole
 `has_access_code`. Kod widzi wyłącznie dyspozytor 112 i ekran świadka w trakcie
 akcji ratunkowej.
 
-## 📐 Stack technologiczny
+## Stack technologiczny
 
 - **Backend:** Python 3.12, FastAPI, Pydantic v2, SQLite, openpyxl
-- **Frontend:** HTML5, Tailwind CSS (CDN), Leaflet.js, Vanilla JS
+- **Frontend:** HTML5, Tailwind CSS (CDN), Leaflet.js, React 18
 - **Konteneryzacja:** Docker + docker-compose
 - **Zero Node.js, zero CORS, zero tarcia**
 
-## 📦 Struktura projektu
+## Struktura projektu
 
 ```
 pulsemap/
@@ -103,7 +103,7 @@ pulsemap/
 └── README.md
 ```
 
-## 🔗 Endpointy API
+## Endpointy API
 
 | Endpoint | Opis |
 |----------|------|
@@ -123,14 +123,14 @@ pulsemap/
 | `POST /api/v1/ingest/single` | Formularz zgłoszenia AED |
 | `GET /go/{token}` | Ekran Świadka (Zero-Install) |
 
-## ♿ Dostępność (WCAG 2.1)
+## Dostępność (WCAG 2.1)
 
 - Skip to content, aria-labels, role attributes
 - Pełna obsługa klawiaturą (focus-visible)
 - Ekran Świadka: WCAG AAA kontrast, duże przyciski (min 64px)
 - Responsywność: desktop + mobile
 
-## 🎨 Akcja „Otwórz AED”
+## Akcja „Otwórz AED”
 
 UI niesie identyfikację akcji: **Otwórz AED** – „Poświęć minutę. Podaruj czas na
 przeżycie.” Kolory i fonty są w `app/static/brand.css`. Strona startowa (`/`) to
@@ -139,7 +139,7 @@ zakładka **Akcja** dla dysponentów; mapa jest pod `/mapa`.
 Granice województw (`data/wojewodztwa.geojson`) – uproszczone dane PRG (GUGiK),
 z repozytorium ppatrzyk/polska-geojson.
 
-## 📄 Licencja
+## Licencja
 
 Dane: CC0 1.0 (domena publiczna)
 Kod: MIT

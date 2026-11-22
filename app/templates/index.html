@@ -164,6 +164,13 @@
             </svg>
         );
 
+        const IconShieldCheck = ({ className = "w-4 h-4" }) => (
+            <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                <polyline points="9 12 11 14 15 10" />
+            </svg>
+        );
+
         // ═══════════════════════════════════════════════════════════════════
         // MAIN APP COMPONENT
         // ═══════════════════════════════════════════════════════════════════
@@ -292,6 +299,7 @@
             const [filterStatus, setFilterStatus] = useState('all');
             const [searchCity, setSearchCity] = useState('');
             const [loading, setLoading] = useState(true);
+            const [verifyModalAed, setVerifyModalAed] = useState(null);
 
             useEffect(() => {
                 if (!mapInstance.current && mapRef.current) {
@@ -378,6 +386,19 @@
                 clusterGroup.current.addLayers(markers);
             }, [aeds, filterStatus, searchCity]);
 
+            const handleVerificationDone = (res) => {
+                if (!selectedAed) return;
+                const updated = {
+                    ...selectedAed,
+                    certified: res.certified !== undefined ? res.certified : selectedAed.certified,
+                    certified_by: res.certified_by || selectedAed.certified_by,
+                    quality_score: res.quality_score !== undefined ? res.quality_score : selectedAed.quality_score,
+                    verification_count: res.verification_count !== undefined ? res.verification_count : (selectedAed.verification_count || 0) + 1,
+                };
+                onSelectAed(updated);
+                setAeds(prev => prev.map(item => item.aed_id === updated.aed_id ? { ...item, ...updated } : item));
+            };
+
             return (
                 <div className="h-full flex flex-col md:flex-row overflow-hidden relative">
                     {/* Map Surface */}
@@ -461,6 +482,46 @@
                                     </span>
                                 </div>
 
+                                {/* Certification & Verification Status Card */}
+                                {selectedAed.certified ? (
+                                    <div className="bg-[#E6F4EE] border-2 border-[#00875A] rounded-xl p-3 flex items-center justify-between text-[#006644] shadow-xs">
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="w-8 h-8 rounded-full bg-[#00875A] text-white flex items-center justify-center shrink-0">
+                                                <IconShieldCheck className="w-5 h-5" />
+                                            </div>
+                                            <div>
+                                                <strong className="block text-xs uppercase tracking-wide text-[#00875A]">Certyfikowany Obiekt AED</strong>
+                                                <span className="text-[10px] text-[#4A5A53]">Audyt PRM: {selectedAed.certified_by || 'Ratownik Medyczny'}</span>
+                                            </div>
+                                        </div>
+                                        <a
+                                            href={`/certificate/${selectedAed.aed_id}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="bg-[#00875A] hover:bg-[#006644] text-white text-[11px] font-bold py-1.5 px-3 rounded shadow-xs transition"
+                                        >
+                                            Certyfikat
+                                        </a>
+                                    </div>
+                                ) : (
+                                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 flex items-center justify-between text-amber-900 text-xs">
+                                        <div>
+                                            <span className="font-semibold block">Weryfikacje w terenie: {selectedAed.verification_count || 0}</span>
+                                            <span className="text-[10px] text-amber-700">Wymaga audytu ratownika do certyfikatu</span>
+                                        </div>
+                                        <span className="gov-badge gov-badge-amber text-[10px]">Do certyfikacji</span>
+                                    </div>
+                                )}
+
+                                {/* Action: Two-Tier Verify Button */}
+                                <button
+                                    onClick={() => setVerifyModalAed(selectedAed)}
+                                    className="w-full bg-[#14201B] hover:bg-[#25362E] text-white py-3 px-3 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 shadow-xs transition"
+                                >
+                                    <IconShieldCheck className="w-4 h-4 text-[#2BD98A]" />
+                                    <span>Zweryfikuj ten AED w terenie</span>
+                                </button>
+
                                 {/* Cabinet Access Code – sam kod nie jest publiczny, podaje go dyspozytor 112 */}
                                 {selectedAed.has_access_code && (
                                     <div className="bg-[#fffaeb] border border-[#fedf89] rounded p-3 text-[#b54708]">
@@ -491,7 +552,7 @@
                                     <div>
                                         <span className="text-gray-500 text-[11px] font-bold uppercase block">Godziny dostępności:</span>
                                         <span className="font-mono font-bold text-gray-900 block mt-0.5">
-                                            {selectedAed.opening_hours || '24/7'}
+                                            {hoursPl(selectedAed.opening_hours)}
                                         </span>
                                         {selectedAed.hours_status && (
                                             <span className={`gov-badge mt-1.5 ${
@@ -543,6 +604,347 @@
                             </div>
                         </aside>
                     )}
+
+                    {/* TWO-TIER VERIFICATION MODAL */}
+                    {verifyModalAed && (
+                        <VerifyModal
+                            aed={verifyModalAed}
+                            onClose={() => setVerifyModalAed(null)}
+                            onVerified={handleVerificationDone}
+                        />
+                    )}
+                </div>
+            );
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // MODAL WERYFIKACJI AED (DWUPOZIOMOWY: OBYWATEL / RATOWNIK MEDYCZNY)
+        // ═══════════════════════════════════════════════════════════════════
+        function VerifyModal({ aed, onClose, onVerified }) {
+            const [tab, setTab] = useState('citizen');
+            const [citizenForm, setCitizenForm] = useState({
+                name: '',
+                cabinet_present: true,
+                led_blinking: true,
+                accessible: true,
+                notes: ''
+            });
+            const [proForm, setProForm] = useState({
+                name: '',
+                badge: '',
+                pads_expiry: '2028-06-30',
+                battery_expiry: '2030-12-31',
+                cabinet_present: true,
+                led_blinking: true,
+                accessible: true,
+                rko_kit_complete: true,
+                notes: ''
+            });
+            const [submitting, setSubmitting] = useState(false);
+            const [result, setResult] = useState(null);
+
+            const handleSubmitCitizen = async (e) => {
+                e.preventDefault();
+                setSubmitting(true);
+                try {
+                    const resp = await fetch(`/api/v1/aeds/${aed.aed_id}/verify`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            verifier_type: 'citizen',
+                            verifier_name: citizenForm.name,
+                            cabinet_present: citizenForm.cabinet_present,
+                            led_blinking: citizenForm.led_blinking,
+                            accessible: citizenForm.accessible,
+                            notes: citizenForm.notes
+                        })
+                    });
+                    const data = await resp.json();
+                    setResult(data);
+                    if (onVerified) onVerified(data);
+                } catch (err) {
+                    alert('Błąd weryfikacji: ' + err.message);
+                } finally {
+                    setSubmitting(false);
+                }
+            };
+
+            const handleSubmitPro = async (e) => {
+                e.preventDefault();
+                setSubmitting(true);
+                try {
+                    const resp = await fetch(`/api/v1/aeds/${aed.aed_id}/verify`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            verifier_type: 'professional',
+                            verifier_name: proForm.name,
+                            verifier_badge: proForm.badge,
+                            pads_expiry: proForm.pads_expiry,
+                            battery_expiry: proForm.battery_expiry,
+                            cabinet_present: proForm.cabinet_present,
+                            led_blinking: proForm.led_blinking,
+                            accessible: proForm.accessible,
+                            rko_kit_complete: proForm.rko_kit_complete,
+                            notes: proForm.notes
+                        })
+                    });
+                    const data = await resp.json();
+                    setResult(data);
+                    if (onVerified) onVerified(data);
+                } catch (err) {
+                    alert('Błąd audytu: ' + err.message);
+                } finally {
+                    setSubmitting(false);
+                }
+            };
+
+            return (
+                <div className="fixed inset-0 z-[1000] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+                    <div className="bg-white rounded-2xl max-w-lg w-full border border-gray-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                        {/* Modal Header */}
+                        <div className="p-4 bg-[#14201B] text-white flex items-center justify-between shrink-0">
+                            <div className="flex items-center gap-2.5">
+                                <IconShieldCheck className="w-5 h-5 text-[#2BD98A]" />
+                                <div>
+                                    <h3 className="font-bold text-sm">Weryfikacja Terenowa AED</h3>
+                                    <span className="text-[10px] text-gray-300 font-mono">{aed.address_street || aed.aed_id}</span>
+                                </div>
+                            </div>
+                            <button onClick={onClose} className="p-1 rounded text-gray-400 hover:text-white hover:bg-white/10 text-sm">✕</button>
+                        </div>
+
+                        {/* Modal Tabs */}
+                        {!result && (
+                            <div className="grid grid-cols-2 border-b border-gray-200 text-xs font-bold text-center bg-gray-50">
+                                <button
+                                    onClick={() => setTab('citizen')}
+                                    className={`py-3 px-4 border-b-2 transition ${tab === 'citizen' ? 'border-[#00875A] text-[#00875A] bg-white' : 'border-transparent text-gray-500 hover:text-gray-800'}`}
+                                >
+                                    Obywatel / Świadek (30 s)
+                                </button>
+                                <button
+                                    onClick={() => setTab('pro')}
+                                    className={`py-3 px-4 border-b-2 transition ${tab === 'pro' ? 'border-[#00875A] text-[#00875A] bg-white' : 'border-transparent text-gray-500 hover:text-gray-800'}`}
+                                >
+                                    Ratownik Medyczny / KPP
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Modal Body */}
+                        <div className="p-6 overflow-y-auto flex-1 text-xs">
+                            {result ? (
+                                <div className="space-y-4 text-center py-4">
+                                    <div className="w-14 h-14 rounded-full bg-[#E6F4EE] text-[#00875A] flex items-center justify-center mx-auto">
+                                        <IconCheck className="w-8 h-8" />
+                                    </div>
+                                    <div>
+                                        <h4 className="text-base font-bold text-gray-900">{result.message}</h4>
+                                        <p className="text-xs text-gray-500 mt-1">
+                                            Zaktualizowano wskaźnik jakości: <strong>{result.quality_score}/100 pkt</strong>.
+                                        </p>
+                                    </div>
+
+                                    {result.certificate_url && (
+                                        <div className="p-3 bg-[#E6F4EE] border border-[#00875A] rounded-xl text-left space-y-2">
+                                            <strong className="block text-xs text-[#00875A] uppercase tracking-wide">Przyznano Certyfikat Bezpiecznego Obiektu AED</strong>
+                                            <p className="text-[11px] text-gray-600">Obiekt spełnia wymogi bezpieczeństwa i otrzymał państwowy certyfikat jakości.</p>
+                                            <a
+                                                href={result.certificate_url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="gov-btn gov-btn-primary w-full text-center py-2 text-xs"
+                                            >
+                                                Otwórz i Drukuj Certyfikat A4
+                                            </a>
+                                        </div>
+                                    )}
+
+                                    <button
+                                        onClick={onClose}
+                                        className="gov-btn gov-btn-secondary w-full py-2.5 text-xs font-bold"
+                                    >
+                                        Zamknij
+                                    </button>
+                                </div>
+                            ) : tab === 'citizen' ? (
+                                /* Citizen Quick Verification Form */
+                                <form onSubmit={handleSubmitCitizen} className="space-y-4">
+                                    <div className="bg-blue-50/70 border border-blue-200 p-3 rounded-lg text-blue-900 text-[11px]">
+                                        Jesteś w pobliżu tego urządzenia? Twoje 30 sekund potwierdzenia pomaga dyspozytorom 112 i podnosi ocenę jakości w dane.gov.pl.
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        <label className="flex items-start gap-2.5 p-2.5 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={citizenForm.cabinet_present}
+                                                onChange={(e) => setCitizenForm({ ...citizenForm, cabinet_present: e.target.checked })}
+                                                className="mt-0.5 w-4 h-4 text-[#00875A] rounded"
+                                            />
+                                            <div>
+                                                <strong className="block text-gray-900">Szafka z AED znajduje się na miejscu</strong>
+                                                <span className="text-gray-500 text-[11px]">Urządzenie fizycznie wisi we wskazanym punkcie</span>
+                                            </div>
+                                        </label>
+
+                                        <label className="flex items-start gap-2.5 p-2.5 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={citizenForm.led_blinking}
+                                                onChange={(e) => setCitizenForm({ ...citizenForm, led_blinking: e.target.checked })}
+                                                className="mt-0.5 w-4 h-4 text-[#00875A] rounded"
+                                            />
+                                            <div>
+                                                <strong className="block text-gray-900">Zielona kontrolka autotestu miga</strong>
+                                                <span className="text-gray-500 text-[11px]">Defibrylator jest włączony w tryb czuwania (brak pikania błędu)</span>
+                                            </div>
+                                        </label>
+
+                                        <label className="flex items-start gap-2.5 p-2.5 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={citizenForm.accessible}
+                                                onChange={(e) => setCitizenForm({ ...citizenForm, accessible: e.target.checked })}
+                                                className="mt-0.5 w-4 h-4 text-[#00875A] rounded"
+                                            />
+                                            <div>
+                                                <strong className="block text-gray-900">Dostęp nie jest zablokowany</strong>
+                                                <span className="text-gray-500 text-[11px]">Brak kłódek bez kodu, drzwi wejściowe są otwarte w podanych godzinach</span>
+                                            </div>
+                                        </label>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-[11px] font-bold text-gray-700 uppercase mb-1">Twoje imię / pseudonim (opcjonalnie):</label>
+                                        <input
+                                            type="text"
+                                            value={citizenForm.name}
+                                            onChange={(e) => setCitizenForm({ ...citizenForm, name: e.target.value })}
+                                            placeholder="np. Świadek Marek"
+                                            className="gov-input w-full"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-[11px] font-bold text-gray-700 uppercase mb-1">Uwagi terenowe (opcjonalnie):</label>
+                                        <input
+                                            type="text"
+                                            value={citizenForm.notes}
+                                            onChange={(e) => setCitizenForm({ ...citizenForm, notes: e.target.value })}
+                                            placeholder="np. Szafka obok wind po prawej stronie"
+                                            className="gov-input w-full"
+                                        />
+                                    </div>
+
+                                    <button
+                                        type="submit"
+                                        disabled={submitting}
+                                        className="gov-btn gov-btn-primary w-full py-3 text-xs font-bold uppercase tracking-wider"
+                                    >
+                                        {submitting ? 'Zapisywanie weryfikacji...' : 'Zatwierdź potwierdzenie obywatelskie'}
+                                    </button>
+                                </form>
+                            ) : (
+                                /* Professional Rescue Audit Form */
+                                <form onSubmit={handleSubmitPro} className="space-y-4">
+                                    <div className="bg-[#E6F4EE] border border-[#00875A] p-3 rounded-lg text-[#006644] text-[11px]">
+                                        Autoryzowany audyt techniczny personelu medycznego (PRM, KPP, PSP, OSP). Potwierdzenie terminów przydatności przyznaje <strong>Certyfikat Bezpiecznego Obiektu (100 pkt)</strong>.
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="block text-[11px] font-bold text-gray-700 uppercase mb-1">Imię i nazwisko ratownika:</label>
+                                            <input
+                                                type="text"
+                                                required
+                                                value={proForm.name}
+                                                onChange={(e) => setProForm({ ...proForm, name: e.target.value })}
+                                                placeholder="np. Jan Kowalski"
+                                                className="gov-input w-full"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[11px] font-bold text-gray-700 uppercase mb-1">Nr uprawnień / jednostka:</label>
+                                            <input
+                                                type="text"
+                                                required
+                                                value={proForm.badge}
+                                                onChange={(e) => setProForm({ ...proForm, badge: e.target.value })}
+                                                placeholder="np. PRM-WAW-84920 lub OSP"
+                                                className="gov-input w-full"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="block text-[11px] font-bold text-gray-700 uppercase mb-1">Ważność elektrod:</label>
+                                            <input
+                                                type="date"
+                                                required
+                                                value={proForm.pads_expiry}
+                                                onChange={(e) => setProForm({ ...proForm, pads_expiry: e.target.value })}
+                                                className="gov-input w-full font-mono"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[11px] font-bold text-gray-700 uppercase mb-1">Ważność baterii:</label>
+                                            <input
+                                                type="date"
+                                                required
+                                                value={proForm.battery_expiry}
+                                                onChange={(e) => setProForm({ ...proForm, battery_expiry: e.target.value })}
+                                                className="gov-input w-full font-mono"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2 border-t border-gray-100 pt-2">
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={proForm.rko_kit_complete}
+                                                onChange={(e) => setProForm({ ...proForm, rko_kit_complete: e.target.checked })}
+                                                className="w-4 h-4 text-[#00875A] rounded"
+                                            />
+                                            <span className="text-gray-800">Kompletna apteczka RKO (maseczka, nożyczki, rękawiczki, golarka)</span>
+                                        </label>
+
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={proForm.cabinet_present && proForm.led_blinking}
+                                                onChange={(e) => setProForm({ ...proForm, cabinet_present: e.target.checked, led_blinking: e.target.checked })}
+                                                className="w-4 h-4 text-[#00875A] rounded"
+                                            />
+                                            <span className="text-gray-800">Autotest sprawny, szafka oznakowana symbolem ILCOR AED</span>
+                                        </label>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-[11px] font-bold text-gray-700 uppercase mb-1">Uwagi z audytu technicznego:</label>
+                                        <input
+                                            type="text"
+                                            value={proForm.notes}
+                                            onChange={(e) => setProForm({ ...proForm, notes: e.target.value })}
+                                            placeholder="np. Bateria i elektrody fabrycznie zaplombowane, stan idealny."
+                                            className="gov-input w-full"
+                                        />
+                                    </div>
+
+                                    <button
+                                        type="submit"
+                                        disabled={submitting}
+                                        className="w-full bg-[#00875A] hover:bg-[#006644] text-white py-3 px-4 rounded-lg font-bold text-xs uppercase tracking-wider shadow transition"
+                                    >
+                                        {submitting ? 'Rejestrowanie audytu...' : 'Zatwierdź audyt i nadaj Certyfikat Bezpiecznego Obiektu'}
+                                    </button>
+                                </form>
+                            )}
+                        </div>
+                    </div>
                 </div>
             );
         }
@@ -552,6 +954,9 @@
         // ═══════════════════════════════════════════════════════════════════
         // Dane AED pochodzą m.in. z publicznego formularza – przed wstawieniem do HTML
         // (dymki Leaflet) zawsze escapujemy.
+        // Godziny w bazie są w standardzie OSM (Mo-Fr); ludziom pokazujemy polskie skróty (Pn-Pt).
+        const OSM_DAYS_PL = { Mo: 'Pn', Tu: 'Wt', We: 'Śr', Th: 'Cz', Fr: 'Pt', Sa: 'Sb', Su: 'Nd', PH: 'święta', SH: 'ferie', off: 'nieczynne', closed: 'nieczynne', unknown: 'nieznane' };
+        const hoursPl = (v) => String(v || '').trim().replace(/\b(Mo|Tu|We|Th|Fr|Sa|Su|PH|SH|off|closed|unknown)\b/g, (m) => OSM_DAYS_PL[m]) || '24/7';
         const escapeHtml = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => (
             { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
         ));
@@ -1140,7 +1545,7 @@
                                                 value={formData.opening_hours}
                                                 onChange={(e) => setFormData({ ...formData, opening_hours: e.target.value })}
                                                 className="gov-input w-full font-mono"
-                                                placeholder="24/7 lub Mo-Fr 08:00-18:00"
+                                                placeholder="24/7 lub Pn-Pt 08:00-18:00; Sb 09:00-14:00"
                                             />
                                         </div>
                                     </div>

@@ -364,7 +364,7 @@ SCHEMA_FIELDS = [
      "Czy szafka AED jest zamykana na kod (pole publiczne, wyliczane z access_code)",
      "false", "true / false"),
     ("opening_hours", "TEXT", "Tak", "Godziny dostępności w formacie OSM opening_hours",
-     "24/7", "Np. 24/7, Mo-Fr 08:00-18:00, Mo-Sa 09:00-21:00; Su 10:00-20:00"),
+     "24/7", "Np. 24/7, Mo-Fr 08:00-18:00 (= Pn-Pt), Mo-Sa 09:00-21:00; Su 10:00-20:00. Skróty dni OSM: Mo=Pn, Tu=Wt, We=Śr, Th=Cz, Fr=Pt, Sa=Sb, Su=Nd, PH=święta. Formularz przyjmuje też zapis polski i zapisuje go w standardzie OSM."),
     ("status", "ENUM", "Tak", "Status urządzenia",
      "active", "Dozwolone: active, temporarily_unavailable, damaged, unverified"),
     ("operator_name", "TEXT", "Nie", "Nazwa operatora/właściciela",

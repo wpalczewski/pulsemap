@@ -18,6 +18,9 @@
 
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
+        // Godziny w bazie są w standardzie OSM (Mo-Fr); ludziom pokazujemy polskie skróty (Pn-Pt).
+        const OSM_DAYS_PL = { Mo: 'Pn', Tu: 'Wt', We: 'Śr', Th: 'Cz', Fr: 'Pt', Sa: 'Sb', Su: 'Nd', PH: 'święta', SH: 'ferie', off: 'nieczynne', closed: 'nieczynne', unknown: 'nieznane' };
+        const hoursPl = (v) => String(v || '').trim().replace(/\b(Mo|Tu|We|Th|Fr|Sa|Su|PH|SH|off|closed|unknown)\b/g, (m) => OSM_DAYS_PL[m]) || '24/7';
 
         const initialAed = {% if aed %}{{ aed | tojson }}{% else %}null{% endif %};
         const token = {{ token | tojson }};
@@ -455,7 +458,7 @@
 
                         <div className="flex justify-between items-center text-sm text-[#4A5A53] border-t border-[#E7EDEA] pt-2">
                             <span>Godziny dostępności</span>
-                            <strong className="text-[#14201B] font-mono">{currentAed.opening_hours || '24/7'}</strong>
+                            <strong className="text-[#14201B] font-mono">{hoursPl(currentAed.opening_hours)}</strong>
                         </div>
                     </section>
 

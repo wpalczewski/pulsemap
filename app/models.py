@@ -9,6 +9,8 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.opening_hours import to_osm
+
 
 # ── Enums ──────────────────────────────────────────────────────────────
 class AccessType(str, Enum):
@@ -46,6 +48,10 @@ class AEDRecord(BaseModel):
     operator_email: str = Field(default="")
     last_verified_at: Optional[str] = Field(default=None, description="Data ostatniej weryfikacji ISO-8601")
     quality_score: int = Field(default=0, ge=0, le=100, description="Wynik jakości 0-100")
+    certified: bool = Field(default=False, description="Certyfikat potwierdzony przez personel medyczny")
+    certified_at: Optional[str] = Field(default=None, description="Data certyfikacji ISO-8601")
+    certified_by: Optional[str] = Field(default=None, description="Identyfikator ratownika/jednostki")
+    verification_count: int = Field(default=0, description="Liczba weryfikacji społecznych")
 
     @field_validator("latitude")
     @classmethod
@@ -83,6 +89,12 @@ class AEDRecordIngest(BaseModel):
     operator_email: str = Field(default="")
     last_verified_at: Optional[str] = Field(default=None)
     quality_score: Optional[int] = Field(default=None)
+
+    @field_validator("opening_hours")
+    @classmethod
+    def opening_hours_to_osm(cls, v: str) -> str:
+        """Formularz przyjmuje „Pn-Pt 08:00-18:00”; w bazie i otwartych danych zapis OSM."""
+        return to_osm((v or "").strip()) or "24/7"
 
 
 # ── Dispatcher response models ────────────────────────────────────────
@@ -174,6 +186,19 @@ class RescueEventRequest(BaseModel):
     event: Literal["opened", "en_route", "acquired", "unavailable"]
 
 
+class VerificationRequest(BaseModel):
+    verifier_type: Literal["citizen", "professional"] = "citizen"
+    verifier_name: Optional[str] = ""
+    verifier_badge: Optional[str] = ""
+    cabinet_present: bool = True
+    led_blinking: bool = True
+    accessible: bool = True
+    pads_expiry: Optional[str] = ""
+    battery_expiry: Optional[str] = ""
+    rko_kit_complete: bool = True
+    notes: Optional[str] = ""
+
+
 class RescueStatusResponse(BaseModel):
     token: str
     status: str
@@ -229,9 +254,31 @@ CREATE TABLE IF NOT EXISTS aed (
     operator_email  TEXT DEFAULT '',
     last_verified_at TEXT,
     quality_score   INTEGER DEFAULT 0,
+    certified       INTEGER DEFAULT 0,
+    certified_at    TEXT DEFAULT '',
+    certified_by    TEXT DEFAULT '',
+    verification_count INTEGER DEFAULT 0,
     created_at      TEXT DEFAULT (datetime('now')),
     updated_at      TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS aed_verification (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    aed_id          TEXT NOT NULL,
+    verifier_type   TEXT NOT NULL,
+    verifier_name   TEXT DEFAULT '',
+    verifier_badge  TEXT DEFAULT '',
+    cabinet_present INTEGER DEFAULT 1,
+    led_blinking    INTEGER DEFAULT 1,
+    accessible      INTEGER DEFAULT 1,
+    pads_expiry     TEXT DEFAULT '',
+    battery_expiry  TEXT DEFAULT '',
+    rko_kit_complete INTEGER DEFAULT 1,
+    notes           TEXT DEFAULT '',
+    created_at      TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_aed_verif_aed ON aed_verification(aed_id);
 
 CREATE TABLE IF NOT EXISTS rescue_session (
     token       TEXT PRIMARY KEY,

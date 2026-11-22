@@ -34,6 +34,33 @@ def _run_migrations(con: sqlite3.Connection) -> None:
     aed_cols = {row[1] for row in con.execute("PRAGMA table_info(aed)")}
     if "status_updated_at" not in aed_cols:
         con.execute("ALTER TABLE aed ADD COLUMN status_updated_at TEXT")
+    if "certified" not in aed_cols:
+        con.execute("ALTER TABLE aed ADD COLUMN certified INTEGER DEFAULT 0")
+    if "certified_at" not in aed_cols:
+        con.execute("ALTER TABLE aed ADD COLUMN certified_at TEXT DEFAULT ''")
+    if "certified_by" not in aed_cols:
+        con.execute("ALTER TABLE aed ADD COLUMN certified_by TEXT DEFAULT ''")
+    if "verification_count" not in aed_cols:
+        con.execute("ALTER TABLE aed ADD COLUMN verification_count INTEGER DEFAULT 0")
+
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS aed_verification (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            aed_id          TEXT NOT NULL,
+            verifier_type   TEXT NOT NULL,
+            verifier_name   TEXT DEFAULT '',
+            verifier_badge  TEXT DEFAULT '',
+            cabinet_present INTEGER DEFAULT 1,
+            led_blinking    INTEGER DEFAULT 1,
+            accessible      INTEGER DEFAULT 1,
+            pads_expiry     TEXT DEFAULT '',
+            battery_expiry  TEXT DEFAULT '',
+            rko_kit_complete INTEGER DEFAULT 1,
+            notes           TEXT DEFAULT '',
+            created_at      TEXT DEFAULT (datetime('now'))
+        )
+    """)
+    con.execute("CREATE INDEX IF NOT EXISTS idx_aed_verif_aed ON aed_verification(aed_id)")
     # Seed z Bydgoszczy ma fikcyjne ID węzłów OSM – nie podpisujemy ich jako OSM,
     # bo synchronizacja z prawdziwym OSM oznaczyłaby je jako zniknięte.
     con.execute(

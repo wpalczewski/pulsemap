@@ -80,3 +80,8 @@ def test_quality_score_is_always_computed(db):
 def test_invalid_record_reported(db):
     report = ingest_records(db, [rec(source_name="X", latitude=10.0)])
     assert report.valid == 0 and len(report.errors) == 1
+
+
+def test_polish_hours_are_stored_in_osm_format(db):
+    ingest_records(db, [rec(source_name="Formularz", source_id="f/1", opening_hours="Pn-Pt 08:00-16:00")])
+    assert aeds(db)[0]["opening_hours"] == "Mo-Fr 08:00-16:00"

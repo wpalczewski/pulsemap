@@ -33,6 +33,34 @@ _DAY_MAP = {"Mo": 0, "Tu": 1, "We": 2, "Th": 3, "Fr": 4, "Sa": 5, "Su": 6}
 _DAY_NAMES_PL = ["poniedziałek", "wtorek", "środa", "czwartek", "piątek", "sobota", "niedziela"]
 _ALL_DAYS = frozenset(range(7))
 
+# Zapis w bazie i w otwartych danych to standard OSM (Mo, Tu…). Ludziom pokazujemy
+# polskie skróty (Pn, Wt…), a formularze przyjmują oba warianty.
+_OSM_TO_PL = {
+    "Mo": "Pn", "Tu": "Wt", "We": "Śr", "Th": "Cz", "Fr": "Pt", "Sa": "Sb", "Su": "Nd",
+    "PH": "święta", "SH": "ferie", "off": "nieczynne", "closed": "nieczynne", "unknown": "nieznane",
+}
+_PL_TO_OSM = {
+    "Pon": "Mo", "Pn": "Mo", "Wt": "Tu", "Śr": "We", "Sr": "We", "Czw": "Th", "Cz": "Th",
+    "Pt": "Fr", "Sob": "Sa", "Sb": "Sa", "Ndz": "Su", "Nd": "Su",
+    "święta": "PH", "swieta": "PH", "nieczynne": "off", "zamknięte": "off", "nieznane": "unknown",
+}
+_OSM_WORD_RE = re.compile(r"\b(" + "|".join(_OSM_TO_PL) + r")\b")
+_PL_WORD_RE = re.compile(
+    r"(?<!\w)(" + "|".join(sorted(_PL_TO_OSM, key=len, reverse=True)) + r")(?!\w)", re.IGNORECASE
+)
+_PL_LOOKUP = {k.lower(): v for k, v in _PL_TO_OSM.items()}
+
+
+def to_osm(value: str) -> str:
+    """Polski zapis godzin („Pn-Pt 08:00-18:00”) → standard OSM („Mo-Fr 08:00-18:00”)."""
+    return _PL_WORD_RE.sub(lambda m: _PL_LOOKUP[m.group(1).lower()], value or "")
+
+
+def format_pl(value: str) -> str:
+    """Godziny OSM do wyświetlenia po polsku („Mo-Fr” → „Pn-Pt”)."""
+    v = (value or "").strip() or "24/7"
+    return _OSM_WORD_RE.sub(lambda m: _OSM_TO_PL[m.group(1)], v)
+
 _TIME = r"(\d{1,2}):(\d{2})"
 _RANGE_RE = re.compile(rf"^{_TIME}\s*-\s*{_TIME}$")
 _TIMES_SUFFIX_RE = re.compile(
@@ -183,7 +211,7 @@ _ALWAYS_RE = re.compile(r"^(?:24/7|24h|całodobow[oy]|całą dobę|non-?stop)\.?
 
 def normalize(value: str) -> str:
     """Naprawia częste błędy zapisu spotykane w danych OSM/dysponentów."""
-    v = re.sub(r"\s+", " ", (value or "").strip())
+    v = to_osm(re.sub(r"\s+", " ", (value or "").strip()))
     if _ALWAYS_RE.match(v):
         return "24/7"
     v = re.sub(rf"\b({_DAY_ALT})(?=\d)", r"\1 ", v)  # "Su10:00" → "Su 10:00"
@@ -231,7 +259,7 @@ def availability(value: str, dt: datetime) -> tuple[Availability, str]:
     try:
         schedule = parse_opening_hours(raw)
     except OpeningHoursError:
-        return Availability.unknown, f"Nierozpoznane godziny dostępności „{raw or '—'}” – potwierdź telefonicznie"
+        return Availability.unknown, f"Nierozpoznane godziny dostępności „{format_pl(raw) if raw else '—'}” – potwierdź telefonicznie"
 
     now = dt.hour * 60 + dt.minute
     today = dt.date()
@@ -245,12 +273,12 @@ def availability(value: str, dt: datetime) -> tuple[Availability, str]:
 
     rule = _effective_rule(schedule, today)
     if rule is None:
-        return Availability.closed, f"Zamknięte ({stamp}) – brak godzin na ten dzień; godziny: {raw}"
+        return Availability.closed, f"Zamknięte ({stamp}) – brak godzin na ten dzień; godziny: {format_pl(raw)}"
     if rule.modifier == "unknown":
         return Availability.unknown, f"Godziny oznaczone jako nieznane ({stamp}) – potwierdź telefonicznie"
     if rule.modifier == "off":
         holiday = " (święto)" if is_polish_holiday(today) else ""
-        return Availability.closed, f"Zamknięte ({stamp}{holiday}); godziny: {raw}"
+        return Availability.closed, f"Zamknięte ({stamp}{holiday}); godziny: {format_pl(raw)}"
     if any(start <= now < end for start, end in rule.times):
         return Availability.open, ""
-    return Availability.closed, f"Zamknięte ({stamp}); godziny: {raw}"
+    return Availability.closed, f"Zamknięte ({stamp}); godziny: {format_pl(raw)}"

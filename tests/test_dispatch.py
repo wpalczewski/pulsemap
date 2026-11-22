@@ -31,7 +31,7 @@ def test_scan_classifies_states(demo_db):
     states = {a.opening_hours + "|" + a.state for a in res.in_radius}
     assert "24/7|open" in states
     closed = next(a for a in res.in_radius if a.state == "closed")
-    assert "Mo-Fr 08:00-18:00" in closed.reason
+    assert "Pn-Pt 08:00-18:00" in closed.reason
     assert any(a.state == "unavailable" for a in res.in_radius)
     assert all(a.distance_m <= 400 for a in res.in_radius)
     assert len(res.in_radius) == 3

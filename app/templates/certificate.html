@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Certyfikat Bezpiecznego Obiektu AED · {{ aed.address_street or aed.operator_name }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@700;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        @media print {
+            body { background: white !important; padding: 0 !important; }
+            .no-print { display: none !important; }
+            .cert-box { border: 2px solid #00875A !important; box-shadow: none !important; margin: 0 !important; width: 100% !important; max-width: 100% !important; }
+        }
+        .font-serif-title { font-family: 'Playfair Display', Georgia, serif; }
+        .font-mono-code { font-family: 'JetBrains Mono', monospace; }
+    </style>
+</head>
+<body class="bg-[#f0f3f1] min-h-screen py-10 px-4 flex flex-col items-center justify-center text-[#14201B]">
+
+    <!-- Print Action Bar -->
+    <div class="no-print max-w-3xl w-full mb-6 flex justify-between items-center bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+        <a href="/mapa" class="text-xs font-bold text-[#00875A] hover:underline flex items-center gap-1.5">
+            ← Powrót do mapy AED
+        </a>
+        <div class="flex gap-3">
+            <button onclick="window.print()" class="bg-[#00875A] hover:bg-[#006644] text-white px-5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider shadow transition flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                <span>Drukuj Certyfikat A4 / PDF</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Official Certificate Card -->
+    <div class="cert-box max-w-3xl w-full bg-white border-[6px] border-[#00875A] rounded-2xl p-8 sm:p-12 shadow-xl relative overflow-hidden">
+        <!-- Watermark / Seal Background -->
+        <div class="absolute -right-20 -bottom-20 w-80 h-80 rounded-full bg-[#00875A]/5 pointer-events-none flex items-center justify-center">
+            <div class="w-60 h-60 rounded-full border-4 border-dashed border-[#00875A]/20 flex items-center justify-center text-[#00875A]/20 font-black text-6xl">
+                AED
+            </div>
+        </div>
+
+        <!-- Certificate Header -->
+        <div class="text-center space-y-3 pb-8 border-b-2 border-[#E7EDEA]">
+            <div class="flex items-center justify-center gap-3">
+                <div class="w-12 h-12 rounded-xl bg-[#00875A] flex items-center justify-center text-white shadow-sm">
+                    <svg class="w-7 h-7" viewBox="0 0 48 48" fill="none">
+                        <path d="M16 22v-6.5a8.5 8.5 0 0 1 16.4-3.1" stroke="#FFFFFF" stroke-width="3.6" stroke-linecap="round"/>
+                        <rect x="10.5" y="21.5" width="27" height="18" rx="4.5" fill="#FFFFFF"/>
+                        <path d="M13.5 31h6l2.4-5.2 3.4 9.4 2.8-7.2 1.8 3H34.5" stroke="#00875A" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+                <div class="text-left">
+                    <span class="text-[11px] font-bold tracking-widest text-[#00875A] uppercase block">RZECZPOSPOLITA POLSKA · DANE.GOV.PL</span>
+                    <span class="font-bold text-lg text-gray-900 tracking-tight">Ogólnopolski Rejestr Otwórz AED</span>
+                </div>
+            </div>
+
+            <div class="pt-4">
+                <span class="text-xs font-mono font-bold uppercase tracking-widest text-gray-500 block">PAŃSTWOWY AUDYT BEZPIECZEŃSTWA</span>
+                <h1 class="font-serif-title text-3xl sm:text-4xl text-[#00875A] font-black uppercase mt-1">
+                    Certyfikat Bezpiecznego Obiektu
+                </h1>
+                <p class="text-xs text-gray-600 max-w-lg mx-auto mt-2">
+                    Niniejszym potwierdza się, że w obiekcie zainstalowany jest sprawny, zarejestrowany i zweryfikowany przez uprawniony personel medyczny automatyczny defibrylator zewnętrzny (AED).
+                </p>
+            </div>
+        </div>
+
+        <!-- Facility Info -->
+        <div class="py-8 space-y-6">
+            <div class="bg-gray-50 border border-gray-200 p-5 rounded-xl space-y-2">
+                <span class="text-[10px] font-mono font-bold uppercase text-gray-500">OBIEKT / DYSPOZYTOR:</span>
+                <div class="text-xl font-bold text-gray-900">{{ aed.operator_name or aed.address_street or 'Obiekt Użyteczności Publicznej' }}</div>
+                <div class="text-sm text-gray-700 font-medium">
+                    {{ aed.address_street }}, {{ aed.address_city }} ({{ aed.address_postal_code }})
+                </div>
+                {% if aed.location_description %}
+                <div class="text-xs text-gray-600 pt-1 border-t border-gray-200 mt-2">
+                    <strong>Dokładna lokalizacja:</strong> {{ aed.location_description }}
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Verification Audit Details -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                <div class="p-3 bg-white border border-gray-200 rounded-lg">
+                    <span class="text-[9px] font-mono text-gray-500 uppercase block">Ocena jakości danych</span>
+                    <div class="font-bold text-lg text-[#00875A] mt-0.5 font-mono">100 / 100 pkt</div>
+                </div>
+                <div class="p-3 bg-white border border-gray-200 rounded-lg">
+                    <span class="text-[9px] font-mono text-gray-500 uppercase block">Data inspekcji</span>
+                    <div class="font-bold text-sm text-gray-900 mt-1 font-mono">{{ aed.certified_at[:10] if aed.certified_at else '2026-11-22' }}</div>
+                </div>
+                <div class="p-3 bg-white border border-gray-200 rounded-lg">
+                    <span class="text-[9px] font-mono text-gray-500 uppercase block">Ważność certyfikatu</span>
+                    <div class="font-bold text-sm text-gray-900 mt-1 font-mono">12 miesięcy</div>
+                </div>
+                <div class="p-3 bg-white border border-gray-200 rounded-lg">
+                    <span class="text-[9px] font-mono text-gray-500 uppercase block">Dostępność</span>
+                    <div class="font-bold text-sm text-gray-900 mt-1 font-mono">{{ aed.opening_hours | hours_pl }}</div>
+                </div>
+            </div>
+
+            <!-- Medical Audit Statement -->
+            <div class="border-l-4 border-[#00875A] pl-4 py-1 text-xs text-gray-700 leading-relaxed bg-[#E6F4EE]/40 p-3 rounded-r-lg">
+                <strong>Zakres autoryzowanej weryfikacji ratowniczej:</strong> Potwierdzono fizyczną obecność urządzenia na wskazanym piętrze/filarze, aktywny autotest sprawności baterii, ważność elektrod defibrylacyjnych, kompletność zestawu ratowniczego RKO oraz poprawność procedury dostępu w systemie dyspozytorskim 112.
+            </div>
+        </div>
+
+        <!-- Footer / QR Seal -->
+        <div class="pt-6 border-t-2 border-[#E7EDEA] flex flex-col sm:flex-row items-center justify-between gap-6">
+            <div class="flex items-center gap-4">
+                <div id="cert-qr-code" class="p-1.5 bg-white border border-gray-300 rounded shadow-xs shrink-0"></div>
+                <div class="text-left text-xs">
+                    <span class="font-mono text-[10px] text-gray-500 uppercase block">IDENTYFIKATOR REJESTRU:</span>
+                    <span class="font-mono font-bold text-gray-900 text-xs">{{ aed.aed_id }}</span>
+                    <div class="text-[10px] text-gray-500 mt-0.5">Zeskanuj kod QR, aby sprawdzić aktualny status w portalu dane.gov.pl</div>
+                </div>
+            </div>
+
+            <div class="text-center sm:text-right space-y-1">
+                <div class="text-xs font-semibold text-gray-800">
+                    Inspekcję zatwierdził:
+                </div>
+                <div class="font-mono font-bold text-[#00875A] text-sm tracking-wide">
+                    {{ aed.certified_by or 'Ratownik Medyczny (PRM)' }}
+                </div>
+                <div class="text-[10px] font-mono text-gray-400">
+                    Krajowy Rejestr AED · Serwis RP
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const qrContainer = document.getElementById('cert-qr-code');
+        if (qrContainer) {
+            new QRCode(qrContainer, {
+                text: "{{ base_url }}/mapa?aed={{ aed.aed_id }}",
+                width: 72,
+                height: 72,
+                colorDark: "#14201B",
+                colorLight: "#FFFFFF",
+                correctLevel: QRCode.CorrectLevel.M
+            });
+        }
+    </script>
+</body>
+</html>

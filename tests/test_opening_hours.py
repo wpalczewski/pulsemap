@@ -54,7 +54,7 @@ def test_availability(oh, dt, expected):
 
 def test_closed_reason_mentions_hours():
     st, reason = availability("Mo-Fr 08:00-16:00", SAT_10)
-    assert st == Availability.closed and "Mo-Fr 08:00-16:00" in reason
+    assert st == Availability.closed and "Pn-Pt 08:00-16:00" in reason
 
 
 @pytest.mark.parametrize("d", ["2026-04-05", "2026-04-06", "2026-06-04", "2026-12-24", "2026-05-03"])
@@ -69,3 +69,32 @@ def test_not_holiday():
 def test_normalize_keeps_time_lists():
     assert normalize("Mo-Fr 08:00-12:00, 13:00-16:00") == "Mo-Fr 08:00-12:00, 13:00-16:00"
     assert normalize("Su10:00-18:00") == "Su 10:00-18:00"
+
+
+# ── Polskie skróty dni tygodnia ───────────────────────────────────────
+from app.opening_hours import format_pl, to_osm  # noqa: E402
+
+
+def test_format_pl_translates_days_and_keywords():
+    assert format_pl("Mo-Fr 08:00-18:00") == "Pn-Pt 08:00-18:00"
+    assert format_pl("Mo-Sa 09:00-21:00; Su 10:00-20:00") == "Pn-Sb 09:00-21:00; Nd 10:00-20:00"
+    assert format_pl("We,Th 10:00-12:00; PH off") == "Śr,Cz 10:00-12:00; święta nieczynne"
+    assert format_pl("24/7") == "24/7"
+    assert format_pl("") == "24/7"
+
+
+def test_to_osm_accepts_polish_input():
+    assert to_osm("Pn-Pt 08:00-18:00") == "Mo-Fr 08:00-18:00"
+    assert to_osm("Pn-Sb 09:00-21:00; Nd 10:00-20:00") == "Mo-Sa 09:00-21:00; Su 10:00-20:00"
+    assert to_osm("Śr 10:00-12:00; święta nieczynne") == "We 10:00-12:00; PH off"
+    assert to_osm("Mo-Fr 08:00-18:00") == "Mo-Fr 08:00-18:00"
+
+
+def test_parser_understands_polish_days():
+    assert availability("Pn-Pt 08:00-16:00", MON_14)[0] == Availability.open
+    assert availability("Pn-Pt 08:00-16:00", SAT_10)[0] == Availability.closed
+
+
+def test_closed_reason_uses_polish_days():
+    _, reason = availability("Mo-Fr 08:00-16:00", SAT_10)
+    assert "Pn-Pt 08:00-16:00" in reason and "Mo-Fr" not in reason

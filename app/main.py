@@ -27,7 +27,7 @@ from app.etl import (
     generate_schema_xlsx,
     fetch_osm_aeds_snapshot,
 )
-from app.opening_hours import Availability, availability
+from app.opening_hours import Availability, availability, format_pl
 from app.regions import RegionStat, load_voivodeships, region_stats
 from app.dispatch import ScanResult, scan_radius
 from urllib.parse import urlparse
@@ -40,6 +40,7 @@ from app.models import (
     DispatcherSendRouteRequest,
     RescueEventRequest,
     RescueStatusResponse,
+    VerificationRequest,
     StatsResponse,
     IngestReport,
 )
@@ -84,6 +85,7 @@ def require_api_key(x_api_key: str = Header(default="")) -> None:
         raise HTTPException(status_code=401, detail="Wymagany poprawny nagłówek X-API-Key")
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+templates.env.filters["hours_pl"] = format_pl
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
@@ -167,6 +169,7 @@ async def export_csv():
         "location_description", "indoor", "access_type", "has_access_code",
         "opening_hours", "status", "operator_name", "operator_phone",
         "operator_email", "last_verified_at", "quality_score",
+        "certified", "certified_at", "certified_by", "verification_count",
     ]
     writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction="ignore")
     writer.writeheader()
@@ -251,6 +254,123 @@ async def api_stats():
         duplicates_removed=dedup,
         sources=sources,
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# API: TWO-TIER VERIFICATION & CERTIFICATE
+# ═══════════════════════════════════════════════════════════════════════
+
+@app.post("/api/v1/aeds/{aed_id}/verify")
+async def api_verify_aed(aed_id: str, req: VerificationRequest):
+    """Register citizen or professional verification for an AED."""
+    db = get_db()
+    row = db.execute("SELECT * FROM aed WHERE aed_id = ?", (aed_id,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="AED nie został znaleziony")
+
+    aed = _row_dict(row)
+    now_iso = now_pl().isoformat()
+
+    db.execute(
+        """INSERT INTO aed_verification 
+           (aed_id, verifier_type, verifier_name, verifier_badge, cabinet_present,
+            led_blinking, accessible, pads_expiry, battery_expiry, rko_kit_complete, notes, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            aed_id, req.verifier_type, req.verifier_name or "", req.verifier_badge or "",
+            1 if req.cabinet_present else 0,
+            1 if req.led_blinking else 0,
+            1 if req.accessible else 0,
+            req.pads_expiry or "",
+            req.battery_expiry or "",
+            1 if req.rko_kit_complete else 0,
+            req.notes or "",
+            now_iso,
+        ),
+    )
+
+    current_score = aed.get("quality_score", 0) or 0
+    new_count = (aed.get("verification_count") or 0) + 1
+
+    if req.verifier_type == "professional":
+        cert_by = (req.verifier_badge or "").strip() or (req.verifier_name or "").strip() or "Ratownik Medyczny (PRM)"
+        db.execute(
+            """UPDATE aed 
+               SET certified = 1, certified_at = ?, certified_by = ?,
+                   last_verified_at = ?, quality_score = 100, verification_count = ?
+               WHERE aed_id = ?""",
+            (now_iso, cert_by, now_iso, new_count, aed_id),
+        )
+        db.commit()
+        return {
+            "ok": True,
+            "verifier_type": "professional",
+            "certified": True,
+            "certified_by": cert_by,
+            "certified_at": now_iso,
+            "quality_score": 100,
+            "verification_count": new_count,
+            "certificate_url": f"/certificate/{aed_id}",
+            "message": "Autoryzowany audyt ratowniczy zakończony sukcesem. Przyznano Certyfikat Bezpiecznego Obiektu AED (100/100 pkt jakości)!"
+        }
+    else:
+        if req.cabinet_present and req.led_blinking and req.accessible:
+            new_score = min(85, max(current_score, current_score + 10))
+            db.execute(
+                """UPDATE aed 
+                   SET last_verified_at = ?, quality_score = ?, verification_count = ?
+                   WHERE aed_id = ?""",
+                (now_iso, new_score, new_count, aed_id),
+            )
+            db.commit()
+            return {
+                "ok": True,
+                "verifier_type": "citizen",
+                "certified": bool(aed.get("certified")),
+                "quality_score": new_score,
+                "verification_count": new_count,
+                "message": f"Dziękujemy! Obywatelskie potwierdzenie obecności i sprawności zostało zarejestrowane (Jakość: {new_score}/100 pkt)."
+            }
+        else:
+            new_score = max(20, current_score - 15)
+            db.execute(
+                """UPDATE aed 
+                   SET last_verified_at = ?, quality_score = ?, verification_count = ?
+                   WHERE aed_id = ?""",
+                (now_iso, new_score, new_count, aed_id),
+            )
+            db.commit()
+            return {
+                "ok": True,
+                "verifier_type": "citizen",
+                "warning": True,
+                "quality_score": new_score,
+                "verification_count": new_count,
+                "message": "Zgłoszenie nieprawidłowości (brak szafki lub problem z dostępem) zostało zarejestrowane i przekazane do weryfikacji."
+            }
+
+
+@app.get("/certificate/{aed_id}", response_class=HTMLResponse)
+async def view_certificate(request: Request, aed_id: str):
+    """View & print the official Certificate of Safe AED Facility."""
+    db = get_db()
+    row = db.execute("SELECT * FROM aed WHERE aed_id = ?", (aed_id,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="AED nie został znaleziony")
+    aed = _row_dict(row)
+
+    verif = db.execute(
+        "SELECT * FROM aed_verification WHERE aed_id = ? AND verifier_type = 'professional' ORDER BY id DESC LIMIT 1",
+        (aed_id,)
+    ).fetchone()
+    verif_dict = _row_dict(verif) if verif else {}
+
+    return templates.TemplateResponse("certificate.html", {
+        "request": request,
+        "aed": aed,
+        "verif": verif_dict,
+        "base_url": str(request.base_url).rstrip("/"),
+    })
 
 
 REGIONS_PATH = str(BASE_DIR.parent / "data" / "wojewodztwa.geojson")
