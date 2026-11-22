@@ -95,7 +95,14 @@ def parse_feature(f: dict) -> dict | None:
     return rec
 
 
-def main():
+def main(if_empty: bool = False):
+    if if_empty:
+        # Start kontenera: importujemy tylko przy pierwszym uruchomieniu, żeby
+        # nie nadpisywać przy każdym restarcie danych dodanych w aplikacji.
+        osm = get_db().execute("SELECT count(*) FROM aed_source WHERE source_name = 'OSM'").fetchone()[0]
+        if osm:
+            logger.info(f"Baza zawiera już {osm} rekordów z OSM – pomijam import.")
+            return
     logger.info(f"Wczytywanie pliku {GEOJSON_PATH}...")
     t0 = time.time()
     with open(GEOJSON_PATH, "r", encoding="utf-8") as f:
@@ -129,4 +136,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+
+    main(if_empty="--if-empty" in sys.argv[1:])

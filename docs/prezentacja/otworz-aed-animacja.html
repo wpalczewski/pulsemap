@@ -1,3 +1,4 @@
+<meta charset="utf-8">
 <title>Otwórz AED w minutę</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -304,8 +305,8 @@ button:focus-visible, .seg:focus-visible { outline: 2px solid var(--green); outl
         <div class="src in" style="left:330px;top:560px;--d:700ms">OpenStreetMap<span>OSM</span></div>
         <div class="src in" style="left:720px;top:720px;--d:850ms">Urzędy miast</div>
         <div class="src in" style="left:1060px;top:520px;--d:1000ms">Szkoły i uczelnie</div>
-        <div class="src in" style="left:1380px;top:700px;--d:1150ms">Firmy i galerie</div>
-        <div class="src in" style="left:1300px;top:300px;--d:1300ms">Zgłoszenia mieszkańców</div>
+        <div class="src in" style="left:1300px;top:700px;--d:1150ms">Firmy i galerie</div>
+        <div class="src in" style="left:1180px;top:300px;--d:1300ms">Zgłoszenia mieszkańców</div>
       </section>
 
       <!-- 3. Jeden zbiór -->
@@ -355,7 +356,7 @@ button:focus-visible, .seg:focus-visible { outline: 2px solid var(--green); outl
           </defs>
           <g mask="url(#fadeM)">
             <rect width="1600" height="900" fill="url(#grid)"/>
-            <path d="M760 180 C 920 260, 980 420, 1240 470 S 1560 600, 1640 560" fill="none" stroke="rgba(43,140,217,.25)" stroke-width="26" stroke-linecap="round"/>
+            <path d="M760 210 C 920 280, 1000 315, 1120 310 S 1420 320, 1640 380" fill="none" stroke="rgba(43,140,217,.25)" stroke-width="26" stroke-linecap="round"/>
             <path d="M820 820 L1480 120 M780 300 L1560 760" stroke="rgba(232,244,238,.10)" stroke-width="10"/>
           </g>
           <circle class="radius" cx="1110" cy="470" r="230" fill="rgba(255,77,90,.07)" stroke="rgba(255,77,90,.7)" stroke-width="2.5" stroke-dasharray="4 8"/>
@@ -582,7 +583,7 @@ button:focus-visible, .seg:focus-visible { outline: 2px solid var(--green); outl
     else { const d = pickWoj(); lon = d.bb[0] + Math.random() * (d.bb[2] - d.bb[0]); lat = d.bb[1] + Math.random() * (d.bb[3] - d.bb[1]); if (!wojHas(d.w, lon, lat)) continue; }
     mapPts.push(proj(lon, lat));
   }
-  const SOURCES = [[330, 560], [720, 720], [1060, 520], [1380, 700], [1300, 300]];
+  const SOURCES = [[330, 560], [720, 720], [1060, 520], [1300, 700], [1180, 300]];
   const SRC_COLORS = [[160, 170, 166], [126, 168, 214], [214, 184, 126], [190, 150, 210], [150, 200, 180]];
 
   let mode = 'hidden';

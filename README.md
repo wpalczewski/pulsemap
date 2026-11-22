@@ -18,23 +18,63 @@ Pulsmap łączy rozproszone dane o defibrylatorach AED w jeden ogólnopolski, ot
 | **Otwarte Dane** | Export CSV/JSON/GeoJSON + plik wzorcowy `.xlsx` z definicją schematu |
 | **ETL** | Deduplikacja przestrzenna Haversine (≤30m), merge źródeł, quality_score |
 
-## Uruchomienie
+## Jak uruchomić projekt
 
-### Lokalne (bez Dockera)
+Potrzebny jest **Python 3.12 lub nowszy** albo **Docker**. Cała instalacja trwa
+około minuty; import 18 303 AED z całej Polski – kilka sekund.
+
+### Wariant A: Python
 
 ```bash
+git clone https://github.com/wpalczewski/pulsemap.git
 cd pulsemap
+
+python3 -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+python import_poland_geojson.py    # wczytuje 18 303 AED z data/pl_aed.geojson
+uvicorn app.main:app --port 8000
 ```
 
-Otwórz: **http://localhost:8000**
+Otwórz **http://localhost:8000**.
 
-### Docker
+### Wariant B: Docker
 
 ```bash
+git clone https://github.com/wpalczewski/pulsemap.git
+cd pulsemap
 docker compose up --build
 ```
+
+Otwórz **http://localhost:8000**. Przy pierwszym starcie kontener sam wczytuje
+18 303 AED (kilka sekund). Baza zapisuje się w `data/`, a przy kolejnych startach
+import jest pomijany, więc dane dodane w aplikacji zostają.
+
+> Bez kroku importu aplikacja też wystartuje, ale tylko z kilkudziesięcioma
+> rekordami demonstracyjnymi z Bydgoszczy zamiast mapy całej Polski.
+
+### Co obejrzeć
+
+| Adres | Co pokazuje |
+|---|---|
+| `/` | Strona akcji „Otwórz AED” i ranking województw |
+| `/mapa` | Mapa 18 tys. AED; kliknij znacznik, aby zobaczyć kartę i weryfikację w terenie |
+| `/dispatcher` | Panel dyspozytora 112 |
+| `/submit` | Zgłoszenie AED przez formularz lub import CSV/JSON |
+| `/opendata` | Pobieranie CSV, JSON, GeoJSON i wzorcowego zakresu danych XLSX |
+| `/docs` | Dokumentacja REST API (Swagger) |
+
+**Scenariusz demo (2 minuty):**
+
+1. Wejdź na `/dispatcher` i kliknij scenariusz **„Centrum – AED dostępne 24/7”** –
+   w okręgu 400 m pojawiają się AED, a najbliższe otwarte jest 62 m dalej.
+2. Kliknij **„Wyślij trasę do AED (SMS / QR)”**, a potem **„Widok dzwoniącego”** –
+   otworzy się ekran świadka z trasą i kodem szafki 1912.
+3. Na ekranie świadka kliknij **„Urządzenie zamknięte / brak AED na miejscu”** –
+   świadek dostaje kolejne AED albo instrukcję RKO z metronomem.
+4. Wróć do `/dispatcher` i wybierz **„Biuro wieczorem – AED zamknięte”** – AED czynne
+   Pn-Pt 08:00-18:00 jest wyszarzone, a system proponuje instrukcję RKO.
 
 ### Demo na telefonie (kod QR)
 
