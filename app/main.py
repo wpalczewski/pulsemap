@@ -31,6 +31,8 @@ from app.etl import (
 from app.opening_hours import Availability, availability, format_pl
 from app.regions import RegionStat, assign_voivodeship, load_voivodeships, region_stats
 from app.wykaz_aed import aed_to_wykaz_row, dane_gov_pl_xml, wykaz_csv
+from app.portal_sync import sync_from_portal
+import httpx
 from app.dispatch import ScanResult, scan_radius
 from urllib.parse import urlparse
 from app.models import (
@@ -1092,6 +1094,17 @@ async def ingest_osm():
         return JSONResponse({"message": "Brak danych z OSM (offline?)", "records": 0})
     db = get_db()
     report = ingest_records(db, osm_records, sync_source="OSM" if complete else None)
+    _invalidate_regions_cache()
+    return report
+
+
+@app.post("/api/v1/ingest/dane-gov-pl", dependencies=[Depends(require_api_key)])
+def ingest_dane_gov_pl():
+    """Pobiera ogólnopolski wykaz zbiorczy AED z portalu dane.gov.pl do bazy dyspozytora."""
+    try:
+        report = sync_from_portal(get_db())
+    except (httpx.HTTPError, LookupError) as exc:
+        raise HTTPException(status_code=502, detail=f"Nie udało się pobrać wykazu z dane.gov.pl: {exc}")
     _invalidate_regions_cache()
     return report
 

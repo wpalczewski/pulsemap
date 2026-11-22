@@ -27,6 +27,34 @@ waliduje, deduplikuje i udostępnia:
 - `GET /api/v1/export/wykaz-aed.csv` – wykaz AED w zakresie kolumn portalu (plik do zasilenia ręcznego i źródło zasobu przy imporcie),
 - `GET /api/v1/export/dane-gov-pl.xml` + `dane-gov-pl.md5` – plik XML (schemat `xml_import_otwarte_dane_1_13.xsd` z `containsAedData`) dla źródła danych portalu.
 
+## Pełny obieg danych
+
+```
+dysponenci AED ──(ręcznie / import XML)──▶ dane.gov.pl: wykazy AED
+                                              │ codziennie 3:45
+                                              ▼
+                        dane.gov.pl: „Wykaz defibrylatorów AED – raport zbiorczy”
+                                              │ API portalu
+                                              ▼
+                        Pulsmap: dyspozytor 112 · ekran świadka · mapa
+```
+
+Pulsmap pobiera wykaz zbiorczy przez API portalu (`app/portal_sync.py`):
+wyszukuje zbiór „Wykaz defibrylatorów AED – raport zbiorczy”, pobiera
+wygenerowany przez portal plik CSV i importuje go jako źródło `dane.gov.pl`.
+Rekordy są scalane z istniejącymi (to samo urządzenie w promieniu 30 m), a kod
+do szafki – którego nie ma w otwartym wykazie – nie jest nadpisywany.
+
+```bash
+curl -X POST http://localhost:8010/api/v1/ingest/dane-gov-pl   # lub: python -m app.portal_sync
+```
+
+Zmienne: `PULSEMAP_PORTAL_API_URL` (domyślnie `https://api.mcod.local`),
+`PULSEMAP_PORTAL_CA` – certyfikat lokalnego portalu (w kontenerze:
+`-v .../docker/nginx/certs/mcod.local.pem:/certs/mcod.local.pem:ro -e PULSEMAP_PORTAL_CA=/certs/mcod.local.pem`).
+Test (22.11.2026): 17 838 AED pobranych z portalu, 17 838 scalonych z
+istniejącymi, 0 duplikatów, 0 błędów.
+
 ## Pliki
 
 - `wykaz-aed-backend-2.63.0.patch` – zmiany w backendzie portalu (16 plików: model + migracja `0076_aed_wykaz`, formularz i panel, harvester + XSD, zadanie Celery i harmonogram, polecenie `aed_demo_setup`, ścieżka `/pulsmap/` w nginx, poprawka budowania obrazu – gotowa paczka `gevent`).
@@ -64,8 +92,10 @@ docker compose -f docker-compose.local.yml run --rm --no-deps mcod-local-admin p
 
 # 5. Pulsmap w sieci portalu (dostępny dla portalu pod https://mcod.local/pulsmap/)
 docker build -t pulsmap:local ../../pulsemap
-docker run -d --name pulsmap --network backend_backend --network-alias pulsmap \
-  -e PULSEMAP_DB=/app/data/pulsemap.db -v pulsmap_portal_data:/app/data pulsmap:local
+docker run -d --name pulsmap --network backend_backend --network-alias pulsmap -p 8010:8000 \
+  -e PULSEMAP_DB=/app/data/pulsemap.db -v pulsmap_portal_data:/app/data \
+  -e PULSEMAP_PORTAL_CA=/certs/mcod.local.pem -v "$PWD/docker/nginx/certs/mcod.local.pem:/certs/mcod.local.pem:ro" \
+  pulsmap:local
 
 # 6. Usługi portalu i frontend
 docker compose -f docker-compose.local.yml up -d mcod-nginx mcod-local-admin mcod-local-api mcod-local-celery
